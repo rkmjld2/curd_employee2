@@ -1,39 +1,30 @@
 <?php
 /*
 ============================================================
-CRUD-EMPLOYEE2
-EMPLOYEE PAYMENT CRUD
-LOGIN PROTECTED
+ CURD-EMPLOYEE2
+ EMPLOYEE PAYMENT CRUD
 ============================================================
 
 Database:
     employee
+
+User table:
     app_users
 
-Login:
-    login.php
+IMPORTANT:
+    Each employee record belongs to one user through:
 
-Logout:
-    logout.php
+        employee.user_id
 
-Timezone:
-    Asia/Kolkata
+    A logged-in user can see and modify ONLY
+    his/her own employee records.
+
 ============================================================
 */
 
-
-/* =========================================================
-   TIMEZONE
-========================================================= */
-
-date_default_timezone_set("Asia/Kolkata");
-
-
-/* =========================================================
-   START SESSION
-========================================================= */
-
 session_start();
+
+require_once __DIR__ . "/db.php";
 
 
 /* =========================================================
@@ -52,16 +43,43 @@ if (
 
 
 /* =========================================================
-   DATABASE
+   CURRENT LOGGED-IN USER
 ========================================================= */
 
-include("db.php");
+$current_user_id =
+    $_SESSION["app_user_id"];
 
-$message = "";
+$current_user_name =
+    $_SESSION["app_user_name"] ?? "";
 
 
 /* =========================================================
-   DELETE
+   LOGOUT
+========================================================= */
+
+if (isset($_GET["logout"])) {
+
+    $_SESSION = [];
+
+    session_destroy();
+
+    header("Location: login.php");
+
+    exit;
+}
+
+
+/* =========================================================
+   MESSAGE
+========================================================= */
+
+$message = "";
+
+$message_type = "";
+
+
+/* =========================================================
+   DELETE EMPLOYEE
 ========================================================= */
 
 if (
@@ -75,20 +93,65 @@ if (
 
     if ($id > 0) {
 
-        $sql =
-            "DELETE FROM employee WHERE id = $id";
+        /*
+         * IMPORTANT:
+         *
+         * Delete only if the employee belongs
+         * to the currently logged-in user.
+         */
+
+        $stmt = $conn->prepare("
+            DELETE FROM employee
+            WHERE id = ?
+            AND user_id = ?
+        ");
+
+        if ($stmt) {
+
+            $stmt->bind_param(
+                "is",
+                $id,
+                $current_user_id
+            );
 
 
-        if (mysqli_query($conn, $sql)) {
+            if ($stmt->execute()) {
 
-            $message =
-                "Employee record deleted successfully.";
+                if ($stmt->affected_rows > 0) {
+
+                    $message =
+                        "Employee record deleted successfully.";
+
+                    $message_type =
+                        "success";
+
+                } else {
+
+                    $message =
+                        "Employee record not found.";
+
+                    $message_type =
+                        "error";
+                }
+
+            } else {
+
+                $message =
+                    "Delete failed.";
+
+                $message_type =
+                    "error";
+            }
+
+            $stmt->close();
 
         } else {
 
             $message =
-                "Delete failed: " .
-                mysqli_error($conn);
+                "Delete preparation failed.";
+
+            $message_type =
+                "error";
         }
     }
 }
@@ -112,33 +175,43 @@ if (
     $employee_name =
         mysqli_real_escape_string(
             $conn,
-            trim($_POST["employee_name"])
+            trim($_POST["employee_name"] ?? "")
         );
 
 
     $basic_pay =
-        floatval($_POST["basic_pay"]);
+        floatval(
+            $_POST["basic_pay"] ?? 0
+        );
 
 
     $da_percent =
-        floatval($_POST["da_percent"]);
+        floatval(
+            $_POST["da_percent"] ?? 0
+        );
 
 
     $hra_percent =
-        floatval($_POST["hra_percent"]);
+        floatval(
+            $_POST["hra_percent"] ?? 0
+        );
 
 
     $pf_deduction =
-        floatval($_POST["pf_deduction"]);
+        floatval(
+            $_POST["pf_deduction"] ?? 0
+        );
 
 
     $other_allowance =
-        floatval($_POST["other_allowance"]);
+        floatval(
+            $_POST["other_allowance"] ?? 0
+        );
 
 
-    /* -----------------------------------------------------
+    /* =====================================================
        CALCULATIONS
-    ----------------------------------------------------- */
+    ===================================================== */
 
     $da_amount =
         ($basic_pay * $da_percent) / 100;
@@ -149,11 +222,13 @@ if (
 
 
     /*
-     * Correct formula:
-     *
      * Total =
-     * Basic + DA + HRA
-     * - PF + Other Allowance
+     *
+     * Basic
+     * + DA
+     * + HRA
+     * - PF
+     * + Other Allowance
      */
 
     $total_payment =
@@ -164,51 +239,107 @@ if (
         + $other_allowance;
 
 
-    /* -----------------------------------------------------
-       UPDATE
-    ----------------------------------------------------- */
+    /* =====================================================
+       UPDATE EXISTING EMPLOYEE
+    ===================================================== */
 
     if ($id > 0) {
 
-        $sql = "
-            UPDATE employee SET
-                Employee_name = '$employee_name',
-                BASIC_PAY = $basic_pay,
-                DA_PERCENT = $da_percent,
-                DA_AMOUNT = $da_amount,
-                HRA_PERCENT = $hra_percent,
-                HRA_AMOUNT = $hra_amount,
-                PF_DEDUCTION = $pf_deduction,
-                ANY_OTHER_ALLOWANCE = $other_allowance,
-                TOTAL_PAYMENT = $total_payment
-            WHERE id = $id
-        ";
+        /*
+         * IMPORTANT:
+         *
+         * Update ONLY the current user's record.
+         */
+
+        $stmt = $conn->prepare("
+            UPDATE employee
+            SET
+                Employee_name = ?,
+                BASIC_PAY = ?,
+                DA_PERCENT = ?,
+                DA_AMOUNT = ?,
+                HRA_PERCENT = ?,
+                HRA_AMOUNT = ?,
+                PF_DEDUCTION = ?,
+                ANY_OTHER_ALLOWANCE = ?,
+                TOTAL_PAYMENT = ?
+            WHERE
+                id = ?
+                AND user_id = ?
+        ");
 
 
-        if (mysqli_query($conn, $sql)) {
+        if ($stmt) {
 
-            $message =
-                "Employee record updated successfully.";
+            $stmt->bind_param(
+                "sddddddddis",
+                $employee_name,
+                $basic_pay,
+                $da_percent,
+                $da_amount,
+                $hra_percent,
+                $hra_amount,
+                $pf_deduction,
+                $other_allowance,
+                $total_payment,
+                $id,
+                $current_user_id
+            );
+
+
+            if ($stmt->execute()) {
+
+                if ($stmt->affected_rows >= 0) {
+
+                    $message =
+                        "Employee record updated successfully.";
+
+                    $message_type =
+                        "success";
+
+                }
+
+            } else {
+
+                $message =
+                    "Update failed: " .
+                    $stmt->error;
+
+                $message_type =
+                    "error";
+            }
+
+
+            $stmt->close();
 
         } else {
 
             $message =
-                "Update failed: " .
-                mysqli_error($conn);
+                "Update preparation failed.";
+
+            $message_type =
+                "error";
         }
 
 
-    }
+    } else {
 
-    /* -----------------------------------------------------
-       INSERT
-    ----------------------------------------------------- */
 
-    else {
+        /* =================================================
+           ADD NEW EMPLOYEE
+        ================================================= */
 
-        $sql = "
+        /*
+         * IMPORTANT:
+         *
+         * user_id is automatically taken from
+         * the logged-in session.
+         */
+
+        $stmt = $conn->prepare("
             INSERT INTO employee
             (
+                user_id,
                 Employee_name,
                 BASIC_PAY,
                 DA_PERCENT,
@@ -221,7 +352,26 @@ if (
             )
             VALUES
             (
-                '$employee_name',
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
+            )
+        ");
+
+
+        if ($stmt) {
+
+            $stmt->bind_param(
+                "ssdddddddd",
+                $current_user_id,
+                $employee_name,
                 $basic_pay,
                 $da_percent,
                 $da_amount,
@@ -230,27 +380,44 @@ if (
                 $pf_deduction,
                 $other_allowance,
                 $total_payment
-            )
-        ";
+            );
 
 
-        if (mysqli_query($conn, $sql)) {
+            if ($stmt->execute()) {
 
-            $message =
-                "Employee record added successfully.";
+                $message =
+                    "Employee record added successfully.";
+
+                $message_type =
+                    "success";
+
+            } else {
+
+                $message =
+                    "Insert failed: " .
+                    $stmt->error;
+
+                $message_type =
+                    "error";
+            }
+
+
+            $stmt->close();
 
         } else {
 
             $message =
-                "Insert failed: " .
-                mysqli_error($conn);
+                "Insert preparation failed.";
+
+            $message_type =
+                "error";
         }
     }
 }
 
 
 /* =========================================================
-   EDIT
+   EDIT EMPLOYEE
 ========================================================= */
 
 $edit = NULL;
@@ -264,21 +431,48 @@ if (isset($_GET["edit"])) {
 
     if ($id > 0) {
 
-        $edit_result =
-            mysqli_query(
-                $conn,
-                "SELECT *
-                 FROM employee
-                 WHERE id = $id"
+        /*
+         * IMPORTANT:
+         *
+         * User can edit only his/her own record.
+         */
+
+        $stmt = $conn->prepare("
+            SELECT *
+            FROM employee
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        ");
+
+
+        if ($stmt) {
+
+            $stmt->bind_param(
+                "is",
+                $id,
+                $current_user_id
             );
 
 
-        if ($edit_result) {
+            $stmt->execute();
 
-            $edit =
-                mysqli_fetch_assoc(
-                    $edit_result
-                );
+
+            $edit_result =
+                $stmt->get_result();
+
+
+            if (
+                $edit_result &&
+                $edit_result->num_rows > 0
+            ) {
+
+                $edit =
+                    $edit_result->fetch_assoc();
+            }
+
+
+            $stmt->close();
         }
     }
 }
@@ -310,28 +504,22 @@ if (isset($_GET["search"])) {
     if ($search_sql !== "") {
 
         /*
-         * Allow one optional semicolon
-         * at the end.
+         * Allow one optional semicolon at the end.
          */
 
         $search_sql =
             rtrim($search_sql);
 
-
         $search_sql =
-            rtrim(
-                $search_sql,
-                ";"
-            );
-
+            rtrim($search_sql, ";");
 
         $search_sql =
             trim($search_sql);
 
 
-        /*
-         * Must begin with SELECT.
-         */
+        /* =================================================
+           MUST BEGIN WITH SELECT
+        ================================================= */
 
         if (
             !preg_match(
@@ -344,14 +532,29 @@ if (isset($_GET["search"])) {
                 "Only SELECT statements are allowed.";
 
 
-        /*
-         * Reject modification/
-         * administrative commands.
-         */
+        /* =================================================
+           REJECT DANGEROUS COMMANDS
+        ================================================= */
 
         } elseif (
             preg_match(
-                '/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|RENAME|REPLACE|GRANT|REVOKE|CALL|LOAD|SET|USE)\b/i',
+                '/\b(
+                    INSERT|
+                    UPDATE|
+                    DELETE|
+                    DROP|
+                    ALTER|
+                    TRUNCATE|
+                    CREATE|
+                    RENAME|
+                    REPLACE|
+                    GRANT|
+                    REVOKE|
+                    CALL|
+                    LOAD|
+                    SET|
+                    USE
+                )\b/ix',
                 $search_sql
             )
         ) {
@@ -360,9 +563,9 @@ if (isset($_GET["search"])) {
                 "Only SELECT statements are allowed.";
 
 
-        /*
-         * No multiple statements.
-         */
+        /* =================================================
+           NO MULTIPLE STATEMENTS
+        ================================================= */
 
         } elseif (
             strpos(
@@ -374,53 +577,128 @@ if (isset($_GET["search"])) {
             $search_error =
                 "Please enter only one SELECT statement.";
 
-        }
 
-        else {
+        } else {
 
-            $search_result =
-                mysqli_query(
-                    $conn,
+
+            /*
+             * IMPORTANT SECURITY:
+             *
+             * We do NOT allow the user's SELECT to directly
+             * access records belonging to another user.
+             *
+             * The query is rewritten so employee records
+             * are restricted to current_user_id.
+             */
+
+
+            /*
+             * Check whether the query contains employee.
+             */
+
+            if (
+                preg_match(
+                    '/\bFROM\s+employee\b/i',
                     $search_sql
-                );
+                )
+            ) {
 
 
-            if (!$search_result) {
+                /*
+                 * Add current user's restriction.
+                 *
+                 * This works for normal SELECT queries.
+                 */
 
-                $search_error =
-                    "SQL Error: " .
-                    mysqli_error($conn);
-
-            }
-
-            else {
-
-                $search_count =
-                    mysqli_num_rows(
-                        $search_result
-                    );
-
-
-                $search_fields =
-                    mysqli_fetch_fields(
-                        $search_result
-                    );
-
-
-                foreach (
-                    $search_fields as $field
+                if (
+                    preg_match(
+                        '/\bWHERE\b/i',
+                        $search_sql
+                    )
                 ) {
 
-                    if (
-                        strtolower(
-                            $field->name
-                        ) === "id"
+                    $search_sql =
+                        preg_replace(
+                            '/\bWHERE\b/i',
+                            "WHERE user_id = '" .
+                            mysqli_real_escape_string(
+                                $conn,
+                                $current_user_id
+                            ) .
+                            "' AND ",
+                            $search_sql,
+                            1
+                        );
+
+                } else {
+
+                    $search_sql .=
+                        " WHERE user_id = '" .
+                        mysqli_real_escape_string(
+                            $conn,
+                            $current_user_id
+                        ) .
+                        "'";
+                }
+
+
+            } else {
+
+                /*
+                 * For safety, SQL Search is restricted
+                 * to the employee table.
+                 */
+
+                $search_error =
+                    "SQL Search can only query the employee table.";
+            }
+
+
+            if ($search_error === "") {
+
+                $search_result =
+                    mysqli_query(
+                        $conn,
+                        $search_sql
+                    );
+
+
+                if (!$search_result) {
+
+                    $search_error =
+                        "SQL Error: " .
+                        mysqli_error($conn);
+
+                } else {
+
+                    $search_count =
+                        mysqli_num_rows(
+                            $search_result
+                        );
+
+
+                    $search_fields =
+                        mysqli_fetch_fields(
+                            $search_result
+                        );
+
+
+                    foreach (
+                        $search_fields
+                        as $field
                     ) {
 
-                        $has_id_column =
-                            true;
+                        if (
+                            strtolower(
+                                $field->name
+                            ) === "id"
+                        ) {
 
-                        break;
+                            $has_id_column =
+                                true;
+
+                            break;
+                        }
                     }
                 }
             }
@@ -433,13 +711,31 @@ if (isset($_GET["search"])) {
    NORMAL EMPLOYEE LIST
 ========================================================= */
 
-$result =
-    mysqli_query(
-        $conn,
-        "SELECT *
-         FROM employee
-         ORDER BY id DESC"
+$stmt = $conn->prepare("
+    SELECT *
+    FROM employee
+    WHERE user_id = ?
+    ORDER BY id DESC
+");
+
+
+$result = NULL;
+
+
+if ($stmt) {
+
+    $stmt->bind_param(
+        "s",
+        $current_user_id
     );
+
+    $stmt->execute();
+
+    $result =
+        $stmt->get_result();
+
+    $stmt->close();
+}
 
 ?>
 <!DOCTYPE html>
@@ -450,22 +746,16 @@ $result =
 
 <meta charset="UTF-8">
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
-<title>
-Employee Payment CRUD
-</title>
-
+<title>Employee Payment CRUD</title>
 
 <style>
 
 * {
     box-sizing: border-box;
 }
-
 
 body {
 
@@ -478,7 +768,6 @@ body {
     background: #f2f4f7;
 }
 
-
 .container {
 
     width: 95%;
@@ -488,84 +777,69 @@ body {
     margin: 30px auto;
 }
 
-
-/* =========================================================
-   HEADER
-========================================================= */
-
-.header {
-
-    position: relative;
-
-    background: white;
-
-    padding: 20px 25px;
-
-    margin-bottom: 25px;
-
-    border-radius: 10px;
-
-    box-shadow:
-        0 3px 10px
-        rgba(0,0,0,0.12);
-}
-
-
-.header-title {
+h1 {
 
     text-align: center;
+
+    color: #1d3557;
+
+    margin-bottom: 10px;
 }
 
-
-.header-title h1 {
-
-    margin: 0;
+h2 {
 
     color: #1d3557;
 }
 
 
-.logged-user {
+/* =========================================================
+   USER BAR
+========================================================= */
 
-    position: absolute;
+.user-bar {
 
-    right: 20px;
+    background: #e7f1ff;
 
-    top: 20px;
+    border: 1px solid #b8d8f5;
 
-    text-align: right;
+    padding: 12px;
 
-    font-size: 14px;
+    border-radius: 6px;
+
+    margin-bottom: 20px;
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    flex-wrap: wrap;
+
+    gap: 10px;
 }
 
+.user-info {
 
-.logged-user-name {
-
-    color: #1d3557;
+    color: #084298;
 
     font-weight: bold;
-
-    margin-bottom: 7px;
 }
 
-
 .logout-button {
-
-    display: inline-block;
-
-    padding: 7px 12px;
 
     background: #6c757d;
 
     color: white;
 
-    text-decoration: none;
+    padding: 8px 14px;
 
     border-radius: 5px;
 
-    font-size: 13px;
-}
+    text-decoration: none;
 
+    font-size: 14px;
+}
 
 .logout-button:hover {
 
@@ -573,11 +847,9 @@ body {
 }
 
 
-h2 {
-
-    color: #1d3557;
-}
-
+/* =========================================================
+   CARDS
+========================================================= */
 
 .card {
 
@@ -595,11 +867,11 @@ h2 {
 }
 
 
+/* =========================================================
+   MESSAGE
+========================================================= */
+
 .message {
-
-    background: #d1e7dd;
-
-    color: #0f5132;
 
     padding: 12px;
 
@@ -608,6 +880,20 @@ h2 {
     border-radius: 5px;
 
     font-weight: bold;
+}
+
+.success {
+
+    background: #d1e7dd;
+
+    color: #0f5132;
+}
+
+.error {
+
+    background: #f8d7da;
+
+    color: #842029;
 }
 
 
@@ -635,7 +921,6 @@ h2 {
 
     resize: vertical;
 }
-
 
 .search-buttons {
 
@@ -667,14 +952,12 @@ button,
     font-size: 14px;
 }
 
-
 .search-button {
 
     background: #6f42c1;
 
     color: white;
 }
-
 
 .clear-button {
 
@@ -683,14 +966,12 @@ button,
     color: white;
 }
 
-
 .print-button {
 
     background: #198754;
 
     color: white;
 }
-
 
 .search-info {
 
@@ -706,7 +987,6 @@ button,
 
     color: #084298;
 }
-
 
 .search-error {
 
@@ -725,7 +1005,6 @@ button,
     font-weight: bold;
 }
 
-
 .search-help {
 
     background: #fff3cd;
@@ -738,7 +1017,6 @@ button,
 
     line-height: 1.7;
 }
-
 
 .search-help code {
 
@@ -771,7 +1049,6 @@ button,
     gap: 15px;
 }
 
-
 .form-group {
 
     display: flex;
@@ -779,14 +1056,12 @@ button,
     flex-direction: column;
 }
 
-
 label {
 
     font-weight: bold;
 
     margin-bottom: 6px;
 }
-
 
 input {
 
@@ -799,7 +1074,6 @@ input {
     font-size: 15px;
 }
 
-
 .save {
 
     background: #198754;
@@ -808,7 +1082,6 @@ input {
 
     margin-top: 20px;
 }
-
 
 .cancel {
 
@@ -819,14 +1092,12 @@ input {
     margin-top: 20px;
 }
 
-
 .edit {
 
     background: #0d6efd;
 
     color: white;
 }
-
 
 .delete {
 
@@ -836,11 +1107,14 @@ input {
 }
 
 
+/* =========================================================
+   TABLE
+========================================================= */
+
 .table-container {
 
     overflow-x: auto;
 }
-
 
 table {
 
@@ -848,7 +1122,6 @@ table {
 
     border-collapse: collapse;
 }
-
 
 th,
 td {
@@ -860,7 +1133,6 @@ td {
     text-align: center;
 }
 
-
 th {
 
     background: #1d3557;
@@ -868,12 +1140,10 @@ th {
     color: white;
 }
 
-
 tr:nth-child(even) {
 
     background: #f8f9fa;
 }
-
 
 .total {
 
@@ -882,18 +1152,15 @@ tr:nth-child(even) {
     color: green;
 }
 
-
 .action-cell {
 
     white-space: nowrap;
 }
 
-
 .delete-form {
 
     display: inline;
 }
-
 
 .note {
 
@@ -909,15 +1176,15 @@ tr:nth-child(even) {
 }
 
 
+/* =========================================================
+   PRINT
+========================================================= */
+
 .print-button-area {
 
     margin: 15px 0;
 }
 
-
-/* =========================================================
-   PRINT SEARCH RESULT ONLY
-========================================================= */
 
 @media print {
 
@@ -927,14 +1194,12 @@ tr:nth-child(even) {
             hidden !important;
     }
 
-
     #search-print-area,
     #search-print-area * {
 
         visibility:
             visible !important;
     }
-
 
     #search-print-area {
 
@@ -947,7 +1212,6 @@ tr:nth-child(even) {
         width: 100%;
     }
 
-
     #search-print-area table {
 
         width: 100%;
@@ -955,7 +1219,6 @@ tr:nth-child(even) {
         border-collapse:
             collapse;
     }
-
 
     #search-print-area th,
     #search-print-area td {
@@ -969,44 +1232,18 @@ tr:nth-child(even) {
             center;
     }
 
-
     #search-print-area th {
 
-        background:
-            #ddd !important;
+        background: #ddd !important;
 
-        color:
-            #000 !important;
+        color: #000 !important;
     }
-
 
     .print-button-area {
 
         display:
             none !important;
     }
-}
-
-
-/* =========================================================
-   MOBILE HEADER
-========================================================= */
-
-@media (max-width: 700px) {
-
-    .header {
-
-        padding-bottom: 75px;
-    }
-
-
-    .logged-user {
-
-        right: 20px;
-
-        top: 65px;
-    }
-
 }
 
 </style>
@@ -1020,37 +1257,46 @@ tr:nth-child(even) {
 <div class="container">
 
 
-<!-- =====================================================
-     HEADER
-===================================================== -->
-
-<div class="header">
-
-
-<div class="header-title">
-
 <h1>
 Employee Payment CRUD
 </h1>
 
-</div>
 
+<!-- ======================================================
+     LOGGED-IN USER
+====================================================== -->
 
-<div class="logged-user">
+<div class="user-bar">
 
-<div class="logged-user-name">
+<div class="user-info">
 
-Logged in as:
+Logged in user:
 
 <?php
 
 echo htmlspecialchars(
-    $_SESSION["app_user_name"],
+    $current_user_name,
     ENT_QUOTES,
     "UTF-8"
 );
 
 ?>
+
+&nbsp;&nbsp;
+
+(User ID:
+
+<?php
+
+echo htmlspecialchars(
+    $current_user_id,
+    ENT_QUOTES,
+    "UTF-8"
+);
+
+?>
+
+)
 
 </div>
 
@@ -1065,24 +1311,40 @@ Logout
 </div>
 
 
-</div>
+<?php
 
+if ($message !== "") {
 
-<?php if ($message !== ""): ?>
+?>
 
-<div class="message">
+<div
+    class="message
+    <?php
+
+    echo $message_type === "success"
+        ? "success"
+        : "error";
+
+    ?>"
+>
 
 <?php
 
 echo htmlspecialchars(
-    $message
+    $message,
+    ENT_QUOTES,
+    "UTF-8"
 );
 
 ?>
 
 </div>
 
-<?php endif; ?>
+<?php
+
+}
+
+?>
 
 
 <!-- =====================================================
@@ -1091,20 +1353,16 @@ echo htmlspecialchars(
 
 <div class="card">
 
-
 <h2>
 SQL SELECT Search
 </h2>
 
-
 <div class="search-box">
-
 
 <form
     method="GET"
     action="index.php"
 >
-
 
 <textarea
     name="search"
@@ -1121,7 +1379,6 @@ echo htmlspecialchars(
 
 <div class="search-buttons">
 
-
 <button
     type="submit"
     class="btn search-button"
@@ -1137,7 +1394,6 @@ Search
 Show All
 </a>
 
-
 </div>
 
 </form>
@@ -1147,24 +1403,20 @@ Show All
 
 <div class="search-help">
 
-
 <strong>
-Enter any valid single SELECT statement.
+Enter a valid SELECT statement against the employee table.
 </strong>
 
 <br>
 
-Only SELECT statements are allowed.
+Your search is automatically restricted to your own
+employee records.
 
 <br><br>
 
-
-<strong>
-Examples:
-</strong>
+<strong>Examples:</strong>
 
 <br><br>
-
 
 <code>
 SELECT * FROM employee;
@@ -1172,13 +1424,11 @@ SELECT * FROM employee;
 
 <br><br>
 
-
 <code>
 SELECT * FROM employee WHERE id = 1;
 </code>
 
 <br><br>
-
 
 <code>
 SELECT * FROM employee WHERE Employee_name LIKE '%Ravi%';
@@ -1186,13 +1436,11 @@ SELECT * FROM employee WHERE Employee_name LIKE '%Ravi%';
 
 <br><br>
 
-
 <code>
 SELECT * FROM employee WHERE id BETWEEN 1 AND 10;
 </code>
 
 <br><br>
-
 
 <code>
 SELECT COUNT(*) AS TotalEmployees FROM employee;
@@ -1200,13 +1448,11 @@ SELECT COUNT(*) AS TotalEmployees FROM employee;
 
 <br><br>
 
-
 <code>
 SELECT SUM(TOTAL_PAYMENT) AS TotalPayment FROM employee;
 </code>
 
 <br><br>
-
 
 <code>
 SELECT AVG(BASIC_PAY) AS AverageBasicPay FROM employee;
@@ -1214,24 +1460,24 @@ SELECT AVG(BASIC_PAY) AS AverageBasicPay FROM employee;
 
 <br><br>
 
-
 <code>
 SELECT MAX(TOTAL_PAYMENT) AS HighestPayment FROM employee;
 </code>
 
 <br><br>
 
-
 <strong>
-Do NOT use INSERT, UPDATE, DELETE, DROP, ALTER,
-TRUNCATE, CREATE, etc. in the search box.
+Only SELECT statements against employee are permitted.
 </strong>
-
 
 </div>
 
 
-<?php if ($search_error !== ""): ?>
+<?php
+
+if ($search_error !== "") {
+
+?>
 
 <div class="search-error">
 
@@ -1245,33 +1491,28 @@ echo htmlspecialchars(
 
 </div>
 
-<?php endif; ?>
-
-
 <?php
+
+}
+
 
 if (
     $search_sql !== "" &&
     $search_error === "" &&
     $search_result
-):
+) {
 
 ?>
 
-
 <div class="search-info">
-
 
 <strong>
 Search completed.
 </strong>
 
-
 &nbsp;&nbsp;
 
-
 Rows returned:
-
 
 <strong>
 
@@ -1283,23 +1524,18 @@ echo $search_count;
 
 </strong>
 
-
 </div>
 
 
 <div class="print-button-area">
-
 
 <button
     type="button"
     class="btn print-button"
     onclick="printSearchResult()"
 >
-
 Print Search Result
-
 </button>
-
 
 </div>
 
@@ -1309,20 +1545,20 @@ Print Search Result
     class="table-container"
 >
 
-
 <table>
-
 
 <thead>
 
-
 <tr>
 
+<?php
 
-<?php foreach (
-    $search_fields as $field
-): ?>
+foreach (
+    $search_fields
+    as $field
+) {
 
+?>
 
 <th>
 
@@ -1336,18 +1572,24 @@ echo htmlspecialchars(
 
 </th>
 
+<?php
 
-<?php endforeach; ?>
+}
 
 
-<?php if ($has_id_column): ?>
+if ($has_id_column) {
+
+?>
 
 <th>
 Action
 </th>
 
-<?php endif; ?>
+<?php
 
+}
+
+?>
 
 </tr>
 
@@ -1356,42 +1598,41 @@ Action
 
 <tbody>
 
+<?php
 
-<?php if ($search_count > 0): ?>
+if ($search_count > 0) {
 
+    while (
+        $row =
+        mysqli_fetch_assoc(
+            $search_result
+        )
+    ) {
 
-<?php while (
-    $row =
-    mysqli_fetch_assoc(
-        $search_result
-    )
-): ?>
-
+?>
 
 <tr>
 
-
-<?php foreach (
-    $search_fields as $field
-): ?>
-
-
 <?php
 
-$column =
-    $field->name;
+foreach (
+    $search_fields
+    as $field
+) {
 
+    $column =
+        $field->name;
 
-$value =
-    isset($row[$column])
+    $value =
+        isset(
+            $row[$column]
+        )
         ? $row[$column]
         : "";
 
 ?>
 
-
 <td>
-
 
 <?php
 
@@ -1408,8 +1649,7 @@ if (
         2
     );
 
-}
-else {
+} else {
 
     echo htmlspecialchars(
         (string)$value
@@ -1418,24 +1658,26 @@ else {
 
 ?>
 
-
 </td>
 
+<?php
 
-<?php endforeach; ?>
+}
+
+?>
 
 
-<?php if ($has_id_column): ?>
+<?php
 
+if ($has_id_column) {
+
+?>
 
 <td class="action-cell">
 
-
 <a
     href="index.php?edit=<?php
-        echo intval(
-            $row["id"]
-        );
+        echo intval($row["id"]);
     ?>"
     class="btn edit"
 >
@@ -1449,14 +1691,11 @@ Edit
     class="delete-form"
 >
 
-
 <input
     type="hidden"
     name="delete_id"
     value="<?php
-        echo intval(
-            $row["id"]
-        );
+        echo intval($row["id"]);
     ?>"
 >
 
@@ -1473,64 +1712,64 @@ Edit
 Delete
 </button>
 
-
 </form>
-
 
 </td>
 
+<?php
 
-<?php endif; ?>
+}
 
+?>
 
 </tr>
 
+<?php
 
-<?php endwhile; ?>
+    }
 
+} else {
 
-<?php else: ?>
-
+?>
 
 <tr>
 
-
 <td
     colspan="<?php
+
         echo count(
             $search_fields
-        )
-        +
+        ) +
         (
             $has_id_column
-                ? 1
-                : 0
+            ? 1
+            : 0
         );
+
     ?>"
 >
-
 No records found.
-
 </td>
-
 
 </tr>
 
+<?php
 
-<?php endif; ?>
+}
 
+?>
 
 </tbody>
 
-
 </table>
-
 
 </div>
 
+<?php
 
-<?php endif; ?>
+}
 
+?>
 
 </div>
 
@@ -1540,7 +1779,6 @@ No records found.
 ===================================================== -->
 
 <div class="card">
-
 
 <h2>
 
@@ -1557,34 +1795,27 @@ echo $edit
 
 <div class="note">
 
-
 <strong>
 Calculation:
 </strong>
 
 <br><br>
 
-
 DA Amount =
 Basic Pay × DA % / 100
 
 <br>
-
 
 HRA Amount =
 Basic Pay × HRA % / 100
 
 <br><br>
 
-
 <strong>
-
 Total Payment =
 Basic Pay + DA Amount + HRA Amount
 - PF Deduction + Other Allowance
-
 </strong>
-
 
 </div>
 
@@ -1593,7 +1824,6 @@ Basic Pay + DA Amount + HRA Amount
     method="POST"
     action="index.php"
 >
-
 
 <input
     type="hidden"
@@ -1615,11 +1845,9 @@ Basic Pay + DA Amount + HRA Amount
 
 <div class="form-group">
 
-
 <label>
 Employee Name
 </label>
-
 
 <input
     type="text"
@@ -1638,17 +1866,14 @@ Employee Name
     ?>"
 >
 
-
 </div>
 
 
 <div class="form-group">
 
-
 <label>
 Basic Pay
 </label>
-
 
 <input
     type="number"
@@ -1665,17 +1890,14 @@ Basic Pay
     ?>"
 >
 
-
 </div>
 
 
 <div class="form-group">
 
-
 <label>
 DA %
 </label>
-
 
 <input
     type="number"
@@ -1692,17 +1914,14 @@ DA %
     ?>"
 >
 
-
 </div>
 
 
 <div class="form-group">
 
-
 <label>
 HRA %
 </label>
-
 
 <input
     type="number"
@@ -1719,17 +1938,14 @@ HRA %
     ?>"
 >
 
-
 </div>
 
 
 <div class="form-group">
 
-
 <label>
 PF Deduction
 </label>
-
 
 <input
     type="number"
@@ -1746,17 +1962,14 @@ PF Deduction
     ?>"
 >
 
-
 </div>
 
 
 <div class="form-group">
 
-
 <label>
 Any Other Allowance
 </label>
-
 
 <input
     type="number"
@@ -1773,15 +1986,16 @@ Any Other Allowance
     ?>"
 >
 
+</div>
 
 </div>
 
 
-</div>
+<?php
 
+if ($edit) {
 
-<?php if ($edit): ?>
-
+?>
 
 <button
     type="submit"
@@ -1799,9 +2013,11 @@ Update Employee
 Cancel
 </a>
 
+<?php
 
-<?php else: ?>
+} else {
 
+?>
 
 <button
     type="submit"
@@ -1811,12 +2027,13 @@ Cancel
 Add Employee
 </button>
 
+<?php
 
-<?php endif; ?>
+}
 
+?>
 
 </form>
-
 
 </div>
 
@@ -1827,93 +2044,60 @@ Add Employee
 
 <div class="card">
 
-
 <h2>
-All Employee Records
+My Employee Records
 </h2>
-
 
 <div class="table-container">
 
-
 <table>
-
 
 <thead>
 
-
 <tr>
 
-<th>
-Employee Name
-</th>
+<th>ID</th>
 
-<th>
-ID
-</th>
+<th>Employee Name</th>
 
-<th>
-Basic Pay
-</th>
+<th>Basic Pay</th>
 
-<th>
-DA %
-</th>
+<th>DA %</th>
 
-<th>
-DA Amount
-</th>
+<th>DA Amount</th>
 
-<th>
-HRA %
-</th>
+<th>HRA %</th>
 
-<th>
-HRA Amount
-</th>
+<th>HRA Amount</th>
 
-<th>
-PF Deduction
-</th>
+<th>PF Deduction</th>
 
-<th>
-Other Allowance
-</th>
+<th>Other Allowance</th>
 
-<th>
-Total Payment
-</th>
+<th>Total Payment</th>
 
-<th>
-Action
-</th>
+<th>Action</th>
 
 </tr>
-
 
 </thead>
 
 
 <tbody>
 
-
 <?php
 
 if (
     $result &&
-    mysqli_num_rows($result) > 0
-):
+    $result->num_rows > 0
+) {
+
+    while (
+        $row =
+        $result->fetch_assoc()
+    ) {
 
 ?>
-
-
-<?php while (
-    $row =
-    mysqli_fetch_assoc(
-        $result
-    )
-): ?>
-
 
 <tr>
 
@@ -1922,8 +2106,8 @@ if (
 
 <?php
 
-echo htmlspecialchars(
-    $row["Employee_name"]
+echo intval(
+    $row["id"]
 );
 
 ?>
@@ -1935,8 +2119,8 @@ echo htmlspecialchars(
 
 <?php
 
-echo intval(
-    $row["id"]
+echo htmlspecialchars(
+    $row["Employee_name"]
 );
 
 ?>
@@ -1971,7 +2155,6 @@ echo number_format(
 
 %
 
-
 </td>
 
 
@@ -2001,7 +2184,6 @@ echo number_format(
 ?>
 
 %
-
 
 </td>
 
@@ -2083,14 +2265,15 @@ Edit
     class="delete-form"
 >
 
-
 <input
     type="hidden"
     name="delete_id"
     value="<?php
+
         echo intval(
             $row["id"]
         );
+
     ?>"
 >
 
@@ -2107,46 +2290,42 @@ Edit
 Delete
 </button>
 
-
 </form>
 
 
 </td>
 
-
 </tr>
 
+<?php
 
-<?php endwhile; ?>
+    }
 
+} else {
 
-<?php else: ?>
-
+?>
 
 <tr>
 
-
 <td colspan="11">
 
-No employee records found.
+No employee records found for this user.
 
 </td>
 
-
 </tr>
 
+<?php
 
-<?php endif; ?>
+}
 
+?>
 
 </tbody>
 
-
 </table>
 
-
 </div>
-
 
 </div>
 
@@ -2160,17 +2339,11 @@ No employee records found.
 =========================================================
 PRINT SEARCH RESULT
 =========================================================
-
-Only the div with id="search-print-area"
-is visible when printing.
-=========================================================
 */
 
 function printSearchResult()
 {
-
     window.print();
-
 }
 
 </script>
@@ -2179,7 +2352,6 @@ function printSearchResult()
 </body>
 
 </html>
-
 
 <?php
 
