@@ -1,11 +1,11 @@
 <?php
 /*
 ============================================================
-CRUD-EMPLOYEE2
-LOGIN PAGE
+ CURD-EMPLOYEE2
+ USER LOGIN
 ============================================================
 
-Database table:
+Database:
     app_users
 
 Fields used:
@@ -19,6 +19,7 @@ Fields used:
 
 Timezone:
     Asia/Kolkata
+
 ============================================================
 */
 
@@ -27,8 +28,6 @@ date_default_timezone_set("Asia/Kolkata");
 session_start();
 
 require_once __DIR__ . "/db.php";
-
-$login_error = "";
 
 
 /* =========================================================
@@ -41,15 +40,26 @@ if (
 ) {
 
     header("Location: index.php");
+
     exit;
 }
 
 
 /* =========================================================
-   LOGIN
+   LOGIN MESSAGE
 ========================================================= */
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+$login_error = "";
+
+
+/* =========================================================
+   LOGIN PROCESS
+========================================================= */
+
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST" &&
+    isset($_POST["login"])
+) {
 
     $user_id =
         trim($_POST["user_id"] ?? "");
@@ -58,9 +68,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $_POST["password"] ?? "";
 
 
-    /* -----------------------------------------------------
+    /* =====================================================
        BASIC VALIDATION
-    ----------------------------------------------------- */
+    ===================================================== */
 
     if ($user_id === "") {
 
@@ -77,9 +87,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     else {
 
 
-        /* -------------------------------------------------
+        /* =================================================
            FIND USER
-        ------------------------------------------------- */
+        ================================================= */
 
         $stmt = $conn->prepare("
             SELECT
@@ -99,7 +109,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         if (!$stmt) {
 
             $login_error =
-                "Login system error.";
+                "Login preparation failed.";
 
         }
         else {
@@ -115,11 +125,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $stmt->get_result();
 
 
-            /* ---------------------------------------------
+            /* =============================================
                USER NOT FOUND
-            --------------------------------------------- */
+            ============================================= */
 
-            if ($result->num_rows === 0) {
+            if (
+                !$result ||
+                $result->num_rows === 0
+            ) {
 
                 $login_error =
                     "Invalid User ID or password.";
@@ -131,9 +144,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $result->fetch_assoc();
 
 
-                /* -----------------------------------------
-                   CHECK PASSWORD
-                ----------------------------------------- */
+                /* =========================================
+                   PASSWORD CHECK
+                ========================================= */
 
                 if (
                     !password_verify(
@@ -147,24 +160,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 }
 
-                /* -----------------------------------------
-                   CHECK ACTIVE
-                ----------------------------------------- */
+
+                /* =========================================
+                   ACTIVE CHECK
+                ========================================= */
 
                 elseif (
                     (int)$user["active"] !== 1
                 ) {
 
                     $login_error =
-                        "This user account is inactive.";
+                        "Your account is inactive.";
 
                 }
 
+
                 else {
 
-                    /* -------------------------------------
+                    /* =====================================
                        CURRENT TIME
-                    ------------------------------------- */
+                    ===================================== */
 
                     $now =
                         new DateTime(
@@ -175,76 +190,103 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         );
 
 
-                    /* -------------------------------------
-                       CHECK START TIME
-                    ------------------------------------- */
+                    /* =====================================
+                       START TIME CHECK
+                    ===================================== */
 
                     if (
                         !empty($user["start_time"])
                     ) {
 
-                        $start =
-                            new DateTime(
-                                $user["start_time"],
-                                new DateTimeZone(
-                                    "Asia/Kolkata"
-                                )
-                            );
+                        try {
 
-                        if ($now < $start) {
+                            $start =
+                                new DateTime(
+                                    $user["start_time"],
+                                    new DateTimeZone(
+                                        "Asia/Kolkata"
+                                    )
+                                );
+
+
+                            if (
+                                $now < $start
+                            ) {
+
+                                $login_error =
+                                    "Your account is not active yet.";
+
+                            }
+
+                        }
+                        catch (Exception $e) {
 
                             $login_error =
-                                "User access has not started yet.";
+                                "Invalid account start time.";
 
                         }
                     }
 
 
-                    /* -------------------------------------
-                       CHECK STOP TIME
-                    ------------------------------------- */
+                    /* =====================================
+                       STOP TIME CHECK
+                    ===================================== */
 
                     if (
                         $login_error === "" &&
                         !empty($user["stop_time"])
                     ) {
 
-                        $stop =
-                            new DateTime(
-                                $user["stop_time"],
-                                new DateTimeZone(
-                                    "Asia/Kolkata"
-                                )
-                            );
+                        try {
 
-                        if ($now > $stop) {
+                            $stop =
+                                new DateTime(
+                                    $user["stop_time"],
+                                    new DateTimeZone(
+                                        "Asia/Kolkata"
+                                    )
+                                );
+
+
+                            if (
+                                $now > $stop
+                            ) {
+
+                                $login_error =
+                                    "Your account access has expired.";
+
+                            }
+
+                        }
+                        catch (Exception $e) {
 
                             $login_error =
-                                "User access has expired.";
+                                "Invalid account stop time.";
 
                         }
                     }
 
 
-                    /* -------------------------------------
-                       LOGIN SUCCESS
-                    ------------------------------------- */
+                    /* =====================================
+                       SUCCESSFUL LOGIN
+                    ===================================== */
 
-                    if ($login_error === "") {
+                    if (
+                        $login_error === ""
+                    ) {
 
 
                         /*
                          * Regenerate session ID
-                         * for security.
+                         * after successful authentication.
                          */
 
                         session_regenerate_id(true);
 
 
-                        /*
-                         * Store logged-in user
-                         * information in session.
-                         */
+                        /* =================================
+                           STORE LOGIN SESSION
+                        ================================= */
 
                         $_SESSION["app_user_id"] =
                             $user["user_id"];
@@ -252,29 +294,24 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         $_SESSION["app_user_name"] =
                             $user["user_name"];
 
-                        $_SESSION["app_user_db_id"] =
-                            (int)$user["id"];
 
-
-                        /*
-                         * Update last_login
-                         */
+                        /* =================================
+                           UPDATE LAST LOGIN
+                        ================================= */
 
                         $update =
                             $conn->prepare("
                                 UPDATE app_users
                                 SET last_login = NOW()
-                                WHERE id = ?
+                                WHERE user_id = ?
                             ");
+
 
                         if ($update) {
 
-                            $db_id =
-                                (int)$user["id"];
-
                             $update->bind_param(
-                                "i",
-                                $db_id
+                                "s",
+                                $user["user_id"]
                             );
 
                             $update->execute();
@@ -283,9 +320,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         }
 
 
-                        /*
-                         * Go to employee application
-                         */
+                        /* =================================
+                           GO TO EMPLOYEE PAGE
+                        ================================= */
 
                         header(
                             "Location: index.php"
@@ -313,15 +350,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <meta name="viewport"
       content="width=device-width, initial-scale=1.0">
 
-<title>CRUD Employee 2 - Login</title>
-
+<title>CURD-EMPLOYEE2 - Login</title>
 
 <style>
 
 * {
     box-sizing: border-box;
 }
-
 
 body {
 
@@ -338,9 +373,9 @@ body {
 }
 
 
-.login-container {
+.login-box {
 
-    max-width: 430px;
+    max-width: 420px;
 
     margin: 80px auto;
 
@@ -353,12 +388,12 @@ body {
     box-shadow:
         0 3px 15px
         rgba(0,0,0,0.15);
+
+    text-align: center;
 }
 
 
 h1 {
-
-    text-align: center;
 
     margin-top: 0;
 
@@ -368,27 +403,9 @@ h1 {
 
 .subtitle {
 
-    text-align: center;
-
     color: #666;
 
-    margin-bottom: 25px;
-}
-
-
-.form-group {
-
-    margin-bottom: 18px;
-}
-
-
-label {
-
-    display: block;
-
-    font-weight: bold;
-
-    margin-bottom: 7px;
+    margin-bottom: 20px;
 }
 
 
@@ -398,27 +415,17 @@ input {
 
     padding: 12px;
 
+    font-size: 16px;
+
     border: 1px solid #aaa;
 
     border-radius: 6px;
 
-    font-size: 16px;
+    margin-bottom: 15px;
 }
 
 
-input:focus {
-
-    outline: none;
-
-    border-color: #007bff;
-
-    box-shadow:
-        0 0 4px
-        rgba(0,123,255,0.25);
-}
-
-
-.login-button {
+button {
 
     width: 100%;
 
@@ -438,7 +445,7 @@ input:focus {
 }
 
 
-.login-button:hover {
+button:hover {
 
     opacity: 0.85;
 }
@@ -446,25 +453,21 @@ input:focus {
 
 .error {
 
-    background: #f8d7da;
-
     color: #842029;
 
-    padding: 12px;
+    background: #f8d7da;
 
     border-radius: 6px;
 
-    margin-bottom: 20px;
+    padding: 10px;
 
-    text-align: center;
+    margin-bottom: 15px;
 
     font-weight: bold;
 }
 
 
-.footer {
-
-    text-align: center;
+.small {
 
     margin-top: 20px;
 
@@ -481,31 +484,43 @@ input:focus {
 <body>
 
 
-<div class="login-container">
+<div class="login-box">
 
 
 <h1>
-CRUD Employee 2
+CURD-EMPLOYEE2
 </h1>
 
 
 <div class="subtitle">
-User Login
+Employee Payment System
 </div>
 
 
 <?php
 
-if ($login_error !== "") {
+if (
+    $login_error !== ""
+) {
 
-    echo
-        '<div class="error">' .
-        htmlspecialchars(
-            $login_error,
-            ENT_QUOTES,
-            "UTF-8"
-        ) .
-        '</div>';
+?>
+
+<div class="error">
+
+<?php
+
+echo htmlspecialchars(
+    $login_error,
+    ENT_QUOTES,
+    "UTF-8"
+);
+
+?>
+
+</div>
+
+<?php
+
 }
 
 ?>
@@ -517,52 +532,29 @@ if ($login_error !== "") {
 >
 
 
-<div class="form-group">
-
-<label for="user_id">
-User ID
-</label>
-
 <input
     type="text"
-    id="user_id"
     name="user_id"
+    placeholder="Enter User ID"
     maxlength="50"
     autocomplete="username"
     required
     autofocus
-    value="<?php
-        echo htmlspecialchars(
-            $user_id ?? "",
-            ENT_QUOTES,
-            "UTF-8"
-        );
-    ?>"
 >
 
-</div>
-
-
-<div class="form-group">
-
-<label for="password">
-Password
-</label>
 
 <input
     type="password"
-    id="password"
     name="password"
+    placeholder="Enter Password"
     autocomplete="current-password"
     required
 >
 
-</div>
-
 
 <button
     type="submit"
-    class="login-button"
+    name="login"
 >
 LOGIN
 </button>
@@ -571,8 +563,8 @@ LOGIN
 </form>
 
 
-<div class="footer">
-Employee Payment Management System
+<div class="small">
+Authorized User Login
 </div>
 
 
