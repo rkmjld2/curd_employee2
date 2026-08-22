@@ -70,60 +70,152 @@ $stmt = $conn->prepare("
 ");
 
 if (!$stmt) {
+
     $_SESSION = [];
+
     session_destroy();
+
     header("Location: login.php");
+
     exit;
 }
 
-$stmt->bind_param("s", $current_user_id);
+$stmt->bind_param(
+    "s",
+    $current_user_id
+);
 
 if (!$stmt->execute()) {
+
     $stmt->close();
+
     $_SESSION = [];
+
     session_destroy();
+
     header("Location: login.php");
+
     exit;
 }
 
-$user_result = $stmt->get_result();
+$user_result =
+    $stmt->get_result();
 
-if (!$user_result || $user_result->num_rows === 0) {
+if (
+    !$user_result ||
+    $user_result->num_rows === 0
+) {
+
     $stmt->close();
+
     $_SESSION = [];
+
     session_destroy();
+
     header("Location: login.php");
+
     exit;
 }
 
-$user = $user_result->fetch_assoc();
+$user =
+    $user_result->fetch_assoc();
+
 $stmt->close();
 
-$now = new DateTime("now", new DateTimeZone("Asia/Kolkata"));
 
-if ((int)$user["active"] !== 1) {
+$now =
+    new DateTime(
+        "now",
+        new DateTimeZone(
+            "Asia/Kolkata"
+        )
+    );
+
+
+/* =========================================================
+   ACTIVE CHECK
+========================================================= */
+
+if (
+    (int)$user["active"] !== 1
+) {
+
     $_SESSION = [];
+
     session_destroy();
+
     header("Location: login.php");
+
     exit;
 }
 
-if (!empty($user["start_time"])) {
-    $start = new DateTime($user["start_time"], new DateTimeZone("Asia/Kolkata"));
-    if ($now < $start) {
+
+/* =========================================================
+   START TIME CHECK
+========================================================= */
+
+if (
+    !empty($user["start_time"])
+) {
+
+    $start =
+        new DateTime(
+            $user["start_time"],
+            new DateTimeZone(
+                "Asia/Kolkata"
+            )
+        );
+
+
+    if (
+        $now < $start
+    ) {
+
         $_SESSION = [];
+
         session_destroy();
+
         header("Location: login.php");
+
         exit;
     }
 }
 
-if (!empty($user["stop_time"])) {
-    $stop = new DateTime($user["stop_time"], new DateTimeZone("Asia/Kolkata"));
-    if ($now > $stop) {
+
+/* =========================================================
+   STOP TIME CHECK
+========================================================= */
+
+if (
+    !empty($user["stop_time"])
+) {
+
+    $stop =
+        new DateTime(
+            $user["stop_time"],
+            new DateTimeZone(
+                "Asia/Kolkata"
+            )
+        );
+
+
+    /*
+     * IMPORTANT:
+     *
+     * Use >= so that access stops exactly
+     * at the configured stop time.
+     */
+
+    if (
+        $now >= $stop
+    ) {
+
         $_SESSION = [];
+
         session_destroy();
+
         header("Location: login.php");
+
         exit;
     }
 }
@@ -133,7 +225,9 @@ if (!empty($user["stop_time"])) {
    LOGOUT
 ========================================================= */
 
-if (isset($_GET["logout"])) {
+if (
+    isset($_GET["logout"])
+) {
 
     $_SESSION = [];
 
@@ -164,10 +258,14 @@ if (
 ) {
 
     $id =
-        intval($_POST["delete_id"]);
+        intval(
+            $_POST["delete_id"]
+        );
 
 
-    if ($id > 0) {
+    if (
+        $id > 0
+    ) {
 
         /*
          * IMPORTANT:
@@ -176,11 +274,12 @@ if (
          * to the currently logged-in user.
          */
 
-        $stmt = $conn->prepare("
-            DELETE FROM employee
-            WHERE id = ?
-            AND user_id = ?
-        ");
+        $stmt =
+            $conn->prepare("
+                DELETE FROM employee
+                WHERE id = ?
+                AND user_id = ?
+            ");
 
         if ($stmt) {
 
@@ -191,9 +290,13 @@ if (
             );
 
 
-            if ($stmt->execute()) {
+            if (
+                $stmt->execute()
+            ) {
 
-                if ($stmt->affected_rows > 0) {
+                if (
+                    $stmt->affected_rows > 0
+                ) {
 
                     $message =
                         "Employee record deleted successfully.";
@@ -251,7 +354,9 @@ if (
     $employee_name =
         mysqli_real_escape_string(
             $conn,
-            trim($_POST["employee_name"] ?? "")
+            trim(
+                $_POST["employee_name"] ?? ""
+            )
         );
 
 
@@ -290,11 +395,17 @@ if (
     ===================================================== */
 
     $da_amount =
-        ($basic_pay * $da_percent) / 100;
+        (
+            $basic_pay *
+            $da_percent
+        ) / 100;
 
 
     $hra_amount =
-        ($basic_pay * $hra_percent) / 100;
+        (
+            $basic_pay *
+            $hra_percent
+        ) / 100;
 
 
     /*
@@ -319,7 +430,9 @@ if (
        UPDATE EXISTING EMPLOYEE
     ===================================================== */
 
-    if ($id > 0) {
+    if (
+        $id > 0
+    ) {
 
         /*
          * IMPORTANT:
@@ -327,22 +440,23 @@ if (
          * Update ONLY the current user's record.
          */
 
-        $stmt = $conn->prepare("
-            UPDATE employee
-            SET
-                Employee_name = ?,
-                BASIC_PAY = ?,
-                DA_PERCENT = ?,
-                DA_AMOUNT = ?,
-                HRA_PERCENT = ?,
-                HRA_AMOUNT = ?,
-                PF_DEDUCTION = ?,
-                ANY_OTHER_ALLOWANCE = ?,
-                TOTAL_PAYMENT = ?
-            WHERE
-                id = ?
-                AND user_id = ?
-        ");
+        $stmt =
+            $conn->prepare("
+                UPDATE employee
+                SET
+                    Employee_name = ?,
+                    BASIC_PAY = ?,
+                    DA_PERCENT = ?,
+                    DA_AMOUNT = ?,
+                    HRA_PERCENT = ?,
+                    HRA_AMOUNT = ?,
+                    PF_DEDUCTION = ?,
+                    ANY_OTHER_ALLOWANCE = ?,
+                    TOTAL_PAYMENT = ?
+                WHERE
+                    id = ?
+                    AND user_id = ?
+            ");
 
 
         if ($stmt) {
@@ -363,16 +477,19 @@ if (
             );
 
 
-            if ($stmt->execute()) {
+            if (
+                $stmt->execute()
+            ) {
 
-                if ($stmt->affected_rows >= 0) {
+                if (
+                    $stmt->affected_rows >= 0
+                ) {
 
                     $message =
                         "Employee record updated successfully.";
 
                     $message_type =
                         "success";
-
                 }
 
             } else {
@@ -412,34 +529,35 @@ if (
          * the logged-in session.
          */
 
-        $stmt = $conn->prepare("
-            INSERT INTO employee
-            (
-                user_id,
-                Employee_name,
-                BASIC_PAY,
-                DA_PERCENT,
-                DA_AMOUNT,
-                HRA_PERCENT,
-                HRA_AMOUNT,
-                PF_DEDUCTION,
-                ANY_OTHER_ALLOWANCE,
-                TOTAL_PAYMENT
-            )
-            VALUES
-            (
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?
-            )
-        ");
+        $stmt =
+            $conn->prepare("
+                INSERT INTO employee
+                (
+                    user_id,
+                    Employee_name,
+                    BASIC_PAY,
+                    DA_PERCENT,
+                    DA_AMOUNT,
+                    HRA_PERCENT,
+                    HRA_AMOUNT,
+                    PF_DEDUCTION,
+                    ANY_OTHER_ALLOWANCE,
+                    TOTAL_PAYMENT
+                )
+                VALUES
+                (
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?
+                )
+            ");
 
 
         if ($stmt) {
@@ -459,7 +577,9 @@ if (
             );
 
 
-            if ($stmt->execute()) {
+            if (
+                $stmt->execute()
+            ) {
 
                 $message =
                     "Employee record added successfully.";
@@ -499,13 +619,19 @@ if (
 $edit = NULL;
 
 
-if (isset($_GET["edit"])) {
+if (
+    isset($_GET["edit"])
+) {
 
     $id =
-        intval($_GET["edit"]);
+        intval(
+            $_GET["edit"]
+        );
 
 
-    if ($id > 0) {
+    if (
+        $id > 0
+    ) {
 
         /*
          * IMPORTANT:
@@ -513,13 +639,14 @@ if (isset($_GET["edit"])) {
          * User can edit only his/her own record.
          */
 
-        $stmt = $conn->prepare("
-            SELECT *
-            FROM employee
-            WHERE id = ?
-            AND user_id = ?
-            LIMIT 1
-        ");
+        $stmt =
+            $conn->prepare("
+                SELECT *
+                FROM employee
+                WHERE id = ?
+                AND user_id = ?
+                LIMIT 1
+            ");
 
 
         if ($stmt) {
@@ -571,26 +698,39 @@ $search_fields = array();
 $has_id_column = false;
 
 
-if (isset($_GET["search"])) {
+if (
+    isset($_GET["search"])
+) {
 
     $search_sql =
-        trim($_GET["search"]);
+        trim(
+            $_GET["search"]
+        );
 
 
-    if ($search_sql !== "") {
+    if (
+        $search_sql !== ""
+    ) {
 
         /*
          * Allow one optional semicolon at the end.
          */
 
         $search_sql =
-            rtrim($search_sql);
+            rtrim(
+                $search_sql
+            );
 
         $search_sql =
-            rtrim($search_sql, ";");
+            rtrim(
+                $search_sql,
+                ";"
+            );
 
         $search_sql =
-            trim($search_sql);
+            trim(
+                $search_sql
+            );
 
 
         /* =================================================
@@ -682,8 +822,6 @@ if (isset($_GET["search"])) {
 
                 /*
                  * Add current user's restriction.
-                 *
-                 * This works for normal SELECT queries.
                  */
 
                 if (
@@ -730,7 +868,9 @@ if (isset($_GET["search"])) {
             }
 
 
-            if ($search_error === "") {
+            if (
+                $search_error === ""
+            ) {
 
                 $search_result =
                     mysqli_query(
@@ -739,11 +879,15 @@ if (isset($_GET["search"])) {
                     );
 
 
-                if (!$search_result) {
+                if (
+                    !$search_result
+                ) {
 
                     $search_error =
                         "SQL Error: " .
-                        mysqli_error($conn);
+                        mysqli_error(
+                            $conn
+                        );
 
                 } else {
 
@@ -787,12 +931,13 @@ if (isset($_GET["search"])) {
    NORMAL EMPLOYEE LIST
 ========================================================= */
 
-$stmt = $conn->prepare("
-    SELECT *
-    FROM employee
-    WHERE user_id = ?
-    ORDER BY id DESC
-");
+$stmt =
+    $conn->prepare("
+        SELECT *
+        FROM employee
+        WHERE user_id = ?
+        ORDER BY id DESC
+    ");
 
 
 $result = NULL;
@@ -822,10 +967,14 @@ if ($stmt) {
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-<title>Employee Payment CRUD</title>
+<title>
+Employee Payment CRUD
+</title>
 
 <style>
 
@@ -1389,7 +1538,9 @@ Logout
 
 <?php
 
-if ($message !== "") {
+if (
+    $message !== ""
+) {
 
 ?>
 
@@ -1551,7 +1702,9 @@ Only SELECT statements against employee are permitted.
 
 <?php
 
-if ($search_error !== "") {
+if (
+    $search_error !== ""
+) {
 
 ?>
 
@@ -1653,7 +1806,9 @@ echo htmlspecialchars(
 }
 
 
-if ($has_id_column) {
+if (
+    $has_id_column
+) {
 
 ?>
 
@@ -1676,7 +1831,9 @@ Action
 
 <?php
 
-if ($search_count > 0) {
+if (
+    $search_count > 0
+) {
 
     while (
         $row =
@@ -1745,7 +1902,9 @@ if (
 
 <?php
 
-if ($has_id_column) {
+if (
+    $has_id_column
+) {
 
 ?>
 
@@ -1753,7 +1912,9 @@ if ($has_id_column) {
 
 <a
     href="index.php?edit=<?php
-        echo intval($row["id"]);
+        echo intval(
+            $row["id"]
+        );
     ?>"
     class="btn edit"
 >
@@ -1771,7 +1932,9 @@ Edit
     type="hidden"
     name="delete_id"
     value="<?php
-        echo intval($row["id"]);
+        echo intval(
+            $row["id"]
+        );
     ?>"
 >
 
@@ -2069,7 +2232,9 @@ Any Other Allowance
 
 <?php
 
-if ($edit) {
+if (
+    $edit
+) {
 
 ?>
 
@@ -2176,7 +2341,6 @@ if (
 ?>
 
 <tr>
-
 
 <td>
 
@@ -2322,7 +2486,6 @@ echo number_format(
 
 <td class="action-cell">
 
-
 <a
     href="index.php?edit=<?php
         echo intval(
@@ -2368,7 +2531,6 @@ Delete
 
 </form>
 
-
 </td>
 
 </tr>
@@ -2413,7 +2575,7 @@ No employee records found for this user.
 
 /*
 =========================================================
-PRINT SEARCH RESULT
+ PRINT SEARCH RESULT
 =========================================================
 */
 
@@ -2421,6 +2583,115 @@ function printSearchResult()
 {
     window.print();
 }
+
+
+/*
+=========================================================
+ AUTOMATIC STOP-TIME LOGOUT
+=========================================================
+
+This checks time_check.php every 5 seconds.
+
+If the permitted stop time has been reached,
+time_check.php destroys the login session and
+returns "LOGOUT".
+
+The browser then returns to login.php.
+
+=========================================================
+*/
+
+(function () {
+
+    function checkUserTime() {
+
+        fetch(
+            "time_check.php",
+            {
+                method: "GET",
+                cache: "no-store",
+                credentials: "same-origin"
+            }
+        )
+
+        .then(
+            function (response) {
+
+                /*
+                 * Session is no longer valid.
+                 */
+
+                if (
+                    response.status === 401 ||
+                    response.status === 500
+                ) {
+
+                    window.location.href =
+                        "login.php";
+
+                    return null;
+                }
+
+
+                return response.text();
+
+            }
+        )
+
+        .then(
+            function (result) {
+
+                if (
+                    result &&
+                    result.trim() === "LOGOUT"
+                ) {
+
+                    window.location.href =
+                        "login.php";
+                }
+
+            }
+        )
+
+        .catch(
+            function (error) {
+
+                /*
+                 * Do NOT logout because of a
+                 * temporary network problem.
+                 *
+                 * The next 5-second check will
+                 * try again.
+                 */
+
+                console.log(
+                    "Time check error:",
+                    error
+                );
+
+            }
+        );
+
+    }
+
+
+    /*
+     * Check immediately when the page loads.
+     */
+
+    checkUserTime();
+
+
+    /*
+     * Continue checking every 5 seconds.
+     */
+
+    setInterval(
+        checkUserTime,
+        5000
+    );
+
+})();
 
 </script>
 
@@ -2431,6 +2702,8 @@ function printSearchResult()
 
 <?php
 
-mysqli_close($conn);
+mysqli_close(
+    $conn
+);
 
 ?>
