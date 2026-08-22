@@ -2,51 +2,34 @@
 /*
 ============================================================
  CURD-EMPLOYEE2
- USER LOGIN
+ USER LOGIN WITH START / STOP TIME CONTROL
 ============================================================
 
 Database:
     app_users
 
-Login checks:
-
-    1. User ID exists
-    2. Password is correct
-    3. User is active
-    4. Start time has been reached
-    5. Stop time has not expired
+Columns used:
+    user_id
+    user_name
+    password_hash
+    active
+    start_time
+    stop_time
+    last_login
 
 Timezone:
     Asia/Kolkata
 
-Session variables:
+IMPORTANT:
+    Time control is checked during login.
+    index.php also checks it again after login.
 
-    $_SESSION["app_user_id"]
-    $_SESSION["app_user_name"]
-
-After successful login:
-    index.php
 ============================================================
 */
 
-
-/* =========================================================
-   TIMEZONE
-========================================================= */
-
 date_default_timezone_set("Asia/Kolkata");
 
-
-/* =========================================================
-   SESSION
-========================================================= */
-
 session_start();
-
-
-/* =========================================================
-   DATABASE
-========================================================= */
 
 require_once __DIR__ . "/db.php";
 
@@ -67,16 +50,14 @@ if (
 
 
 /* =========================================================
-   VARIABLES
+   MESSAGE
 ========================================================= */
 
 $error = "";
 
-$user_id = "";
-
 
 /* =========================================================
-   LOGIN PROCESS
+   LOGIN
 ========================================================= */
 
 if (
@@ -85,32 +66,18 @@ if (
 ) {
 
     $user_id =
-        trim(
-            $_POST["user_id"] ?? ""
-        );
+        trim($_POST["user_id"] ?? "");
 
     $password =
         $_POST["password"] ?? "";
 
 
-    /* =====================================================
-       BASIC VALIDATION
-    ===================================================== */
-
-    if ($user_id === "") {
+    if ($user_id === "" || $password === "") {
 
         $error =
-            "Please enter User ID.";
+            "Please enter User ID and Password.";
 
-    }
-    elseif ($password === "") {
-
-        $error =
-            "Please enter password.";
-
-    }
-    else {
-
+    } else {
 
         /* =================================================
            FIND USER
@@ -134,27 +101,20 @@ if (
         if (!$stmt) {
 
             $error =
-                "Database preparation failed.";
+                "Login preparation failed.";
 
-        }
-        else {
+        } else {
 
             $stmt->bind_param(
                 "s",
                 $user_id
             );
 
-
             $stmt->execute();
-
 
             $result =
                 $stmt->get_result();
 
-
-            /* =============================================
-               USER NOT FOUND
-            ============================================= */
 
             if (
                 !$result ||
@@ -162,17 +122,16 @@ if (
             ) {
 
                 $error =
-                    "Invalid User ID or password.";
+                    "Invalid User ID or Password.";
 
-            }
-            else {
+            } else {
 
                 $user =
                     $result->fetch_assoc();
 
 
                 /* =========================================
-                   PASSWORD CHECK
+                   CHECK PASSWORD
                 ========================================= */
 
                 if (
@@ -183,13 +142,12 @@ if (
                 ) {
 
                     $error =
-                        "Invalid User ID or password.";
+                        "Invalid User ID or Password.";
 
                 }
 
-
                 /* =========================================
-                   ACTIVE CHECK
+                   CHECK ACTIVE
                 ========================================= */
 
                 elseif (
@@ -199,14 +157,11 @@ if (
                     $error =
                         "Your account is inactive. Please contact the administrator.";
 
-                }
+                } else {
 
-
-                /* =========================================
-                   CURRENT TIME
-                ========================================= */
-
-                else {
+                    /*
+                     * Current server time in India.
+                     */
 
                     $now =
                         new DateTime(
@@ -218,7 +173,7 @@ if (
 
 
                     /* =====================================
-                       START TIME CHECK
+                       START TIME
                     ===================================== */
 
                     if (
@@ -227,39 +182,31 @@ if (
                         )
                     ) {
 
-                        try {
-
-                            $start_time =
-                                new DateTime(
-                                    $user["start_time"],
-                                    new DateTimeZone(
-                                        "Asia/Kolkata"
-                                    )
-                                );
+                        $start =
+                            new DateTime(
+                                $user["start_time"],
+                                new DateTimeZone(
+                                    "Asia/Kolkata"
+                                )
+                            );
 
 
-                            if (
-                                $now < $start_time
-                            ) {
-
-                                $error =
-                                    "Your account has not started yet.";
-
-                            }
-
-                        }
-                        catch (
-                            Exception $e
+                        if (
+                            $now < $start
                         ) {
 
                             $error =
-                                "Invalid account start time.";
+                                "Login is not available yet. Your account starts at " .
+                                $start->format(
+                                    "d-m-Y H:i:s"
+                                ) .
+                                " IST.";
                         }
                     }
 
 
                     /* =====================================
-                       STOP TIME CHECK
+                       STOP TIME
                     ===================================== */
 
                     if (
@@ -269,57 +216,44 @@ if (
                         )
                     ) {
 
-                        try {
-
-                            $stop_time =
-                                new DateTime(
-                                    $user["stop_time"],
-                                    new DateTimeZone(
-                                        "Asia/Kolkata"
-                                    )
-                                );
+                        $stop =
+                            new DateTime(
+                                $user["stop_time"],
+                                new DateTimeZone(
+                                    "Asia/Kolkata"
+                                )
+                            );
 
 
-                            if (
-                                $now >= $stop_time
-                            ) {
-
-                                $error =
-                                    "Your account access has expired.";
-
-                            }
-
-                        }
-                        catch (
-                            Exception $e
+                        if (
+                            $now > $stop
                         ) {
 
                             $error =
-                                "Invalid account stop time.";
+                                "Your login time has expired. Your account stopped at " .
+                                $stop->format(
+                                    "d-m-Y H:i:s"
+                                ) .
+                                " IST.";
                         }
                     }
 
 
                     /* =====================================
-                       SUCCESSFUL LOGIN
+                       LOGIN SUCCESS
                     ===================================== */
 
                     if ($error === "") {
 
-
                         /*
-                         * Regenerate session ID
-                         * for security.
+                         * Regenerate session ID after
+                         * successful authentication.
                          */
 
                         session_regenerate_id(
                             true
                         );
 
-
-                        /*
-                         * Store logged-in user.
-                         */
 
                         $_SESSION[
                             "app_user_id"
@@ -334,20 +268,25 @@ if (
 
 
                         /*
-                         * Store login time.
+                         * Store the permitted stop time
+                         * in the session for display/use.
                          */
 
                         $_SESSION[
-                            "app_login_time"
+                            "app_start_time"
                         ] =
-                            date(
-                                "Y-m-d H:i:s"
-                            );
+                            $user["start_time"];
 
 
-                        /* =================================
-                           UPDATE LAST LOGIN
-                        ================================= */
+                        $_SESSION[
+                            "app_stop_time"
+                        ] =
+                            $user["stop_time"];
+
+
+                        /*
+                         * Update last_login.
+                         */
 
                         $update =
                             $conn->prepare("
@@ -360,10 +299,9 @@ if (
                         if ($update) {
 
                             $login_time =
-                                date(
+                                $now->format(
                                     "Y-m-d H:i:s"
                                 );
-
 
                             $update->bind_param(
                                 "ss",
@@ -371,16 +309,11 @@ if (
                                 $user["user_id"]
                             );
 
-
                             $update->execute();
 
                             $update->close();
                         }
 
-
-                        /*
-                         * GO TO EMPLOYEE APPLICATION
-                         */
 
                         header(
                             "Location: index.php"
@@ -390,7 +323,6 @@ if (
                     }
                 }
             }
-
 
             $stmt->close();
         }
@@ -415,13 +347,11 @@ if (
 CURD-EMPLOYEE2 - User Login
 </title>
 
-
 <style>
 
 * {
     box-sizing: border-box;
 }
-
 
 body {
 
@@ -434,11 +364,12 @@ body {
         Helvetica,
         sans-serif;
 
-    background: #f2f2f2;
+    background: #f2f4f7;
 }
 
-
 .login-box {
+
+    width: 100%;
 
     max-width: 420px;
 
@@ -451,12 +382,11 @@ body {
     border-radius: 12px;
 
     box-shadow:
-        0 3px 15px
+        0 4px 15px
         rgba(0,0,0,0.15);
 
     text-align: center;
 }
-
 
 h1 {
 
@@ -465,7 +395,6 @@ h1 {
     color: #1d3557;
 }
 
-
 .subtitle {
 
     color: #666;
@@ -473,24 +402,22 @@ h1 {
     margin-bottom: 25px;
 }
 
-
 .error {
 
     background: #f8d7da;
 
     color: #842029;
 
-    border: 1px solid #f5c2c7;
-
-    padding: 10px;
+    padding: 12px;
 
     border-radius: 6px;
 
-    margin-bottom: 15px;
+    margin-bottom: 18px;
 
     font-weight: bold;
-}
 
+    line-height: 1.5;
+}
 
 .form-group {
 
@@ -498,7 +425,6 @@ h1 {
 
     margin-bottom: 15px;
 }
-
 
 label {
 
@@ -509,30 +435,20 @@ label {
     margin-bottom: 6px;
 }
 
-
 input {
 
     width: 100%;
 
     padding: 12px;
 
-    font-size: 16px;
-
     border: 1px solid #aaa;
 
     border-radius: 6px;
+
+    font-size: 16px;
 }
 
-
-input:focus {
-
-    outline: none;
-
-    border-color: #0d6efd;
-}
-
-
-.login-button {
+button {
 
     width: 100%;
 
@@ -550,42 +466,34 @@ input:focus {
 
     cursor: pointer;
 
-    margin-top: 5px;
+    margin-top: 10px;
 }
 
-
-.login-button:hover {
+button:hover {
 
     opacity: 0.85;
 }
 
-
-.small {
+.footer {
 
     margin-top: 20px;
 
     color: #777;
 
     font-size: 13px;
-
-    line-height: 1.5;
 }
 
 </style>
 
 </head>
 
-
 <body>
 
-
 <div class="login-box">
-
 
 <h1>
 CURD-EMPLOYEE2
 </h1>
-
 
 <div class="subtitle">
 Employee Payment System
@@ -636,15 +544,6 @@ User ID
     id="user_id"
     name="user_id"
     maxlength="50"
-    value="<?php
-
-        echo htmlspecialchars(
-            $user_id,
-            ENT_QUOTES,
-            "UTF-8"
-        );
-
-    ?>"
     required
     autofocus
 >
@@ -671,29 +570,24 @@ Password
 <button
     type="submit"
     name="login"
-    class="login-button"
 >
 LOGIN
 </button>
 
-
 </form>
 
 
-<div class="small">
+<div class="footer">
 
-Your account access is controlled by the administrator.
+Authorized users only
 
 <br>
 
-Start and Stop times are in
-<strong>Asia/Kolkata (IST)</strong>.
+Time zone: Asia/Kolkata (IST)
 
 </div>
 
-
 </div>
-
 
 </body>
 
