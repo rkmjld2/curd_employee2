@@ -19,10 +19,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <!DOCTYPE html>
 <html>
 <head>
+
     <meta charset="UTF-8">
+
     <title>Payroll</title>
 
     <style>
+
         body {
             font-family: Arial, sans-serif;
             background: #f2f2f2;
@@ -55,7 +58,28 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             margin-top: 20px;
             font-size: 18px;
         }
+
+        /* =================================================
+           LOGOUT BUTTON
+        ================================================= */
+
+        .logout-button {
+            display: inline-block;
+            padding: 10px 25px;
+            margin-top: 20px;
+            background: #dc3545;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        .logout-button:hover {
+            background: #b02a37;
+        }
+
     </style>
+
 </head>
 
 <body>
@@ -63,6 +87,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <div class="box">
 
     <h2>Employee Payroll</h2>
+
 
     <form method="post">
 
@@ -82,9 +107,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             required
         >
 
-        <button type="submit">Calculate</button>
+        <button type="submit">
+            Calculate
+        </button>
 
     </form>
+
 
     <?php if ($_SERVER["REQUEST_METHOD"] === "POST"): ?>
 
@@ -115,6 +143,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
 
     <?php endif; ?>
+
+
+    <!-- =================================================
+         LOGOUT
+    ================================================= -->
+
+    <a
+        href="logout.php"
+        class="logout-button"
+    >
+        Logout
+    </a>
+
 
 </div>
 
