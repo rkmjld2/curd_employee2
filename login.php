@@ -3,6 +3,7 @@
 ============================================================
  CURD-EMPLOYEE2
  USER LOGIN WITH START / STOP TIME CONTROL
+ + APPLICATION BASED REDIRECTION
 ============================================================
 
 Database:
@@ -15,14 +16,22 @@ Columns used:
     active
     start_time
     stop_time
+    application
     last_login
 
 Timezone:
     Asia/Kolkata
 
+USER APPLICATION MAPPING:
+
+    ravi   -> index.php
+    ravi2  -> payroll.php
+    ravi3  -> controller.php
+
 IMPORTANT:
     Time control is checked during login.
-    index.php also checks it again after login.
+    Individual application pages should also check
+    the logged-in session/time as required.
 
 ============================================================
 */
@@ -35,6 +44,19 @@ require_once __DIR__ . "/db.php";
 
 
 /* =========================================================
+   ALLOWED APPLICATIONS
+========================================================= */
+
+$allowed_applications = [
+
+    "index.php",
+    "payroll.php",
+    "controller.php"
+
+];
+
+
+/* =========================================================
    IF ALREADY LOGGED IN
 ========================================================= */
 
@@ -43,7 +65,35 @@ if (
     $_SESSION["app_user_id"] !== ""
 ) {
 
-    header("Location: index.php");
+    /*
+     * If the application was stored in the session,
+     * use it for redirection.
+     */
+
+    $application =
+        $_SESSION["app_application"]
+        ?? "index.php";
+
+
+    /*
+     * Safety check.
+     */
+
+    if (
+        !in_array(
+            $application,
+            $allowed_applications,
+            true
+        )
+    ) {
+
+        $application = "index.php";
+    }
+
+
+    header(
+        "Location: " . $application
+    );
 
     exit;
 }
@@ -66,36 +116,49 @@ if (
 ) {
 
     $user_id =
-        trim($_POST["user_id"] ?? "");
+        trim(
+            $_POST["user_id"] ?? ""
+        );
 
     $password =
         $_POST["password"] ?? "";
 
 
-    if ($user_id === "" || $password === "") {
+    /* =====================================================
+       BASIC INPUT CHECK
+    ===================================================== */
+
+    if (
+        $user_id === "" ||
+        $password === ""
+    ) {
 
         $error =
             "Please enter User ID and Password.";
 
     } else {
 
+
         /* =================================================
            FIND USER
         ================================================= */
 
-        $stmt = $conn->prepare("
-            SELECT
-                id,
-                user_id,
-                user_name,
-                password_hash,
-                active,
-                start_time,
-                stop_time
-            FROM app_users
-            WHERE user_id = ?
-            LIMIT 1
-        ");
+        $stmt =
+            $conn->prepare("
+                SELECT
+                    id,
+                    user_id,
+                    user_name,
+                    password_hash,
+                    active,
+                    start_time,
+                    stop_time,
+                    application,
+                    last_login
+                FROM app_users
+                WHERE user_id = ?
+                LIMIT 1
+            ");
 
 
         if (!$stmt) {
@@ -105,16 +168,23 @@ if (
 
         } else {
 
+
             $stmt->bind_param(
                 "s",
                 $user_id
             );
 
+
             $stmt->execute();
+
 
             $result =
                 $stmt->get_result();
 
+
+            /* =============================================
+               USER NOT FOUND
+            ============================================= */
 
             if (
                 !$result ||
@@ -146,6 +216,7 @@ if (
 
                 }
 
+
                 /* =========================================
                    CHECK ACTIVE
                 ========================================= */
@@ -159,9 +230,10 @@ if (
 
                 } else {
 
-                    /*
-                     * Current server time in India.
-                     */
+
+                    /* =====================================
+                       CURRENT IST TIME
+                    ===================================== */
 
                     $now =
                         new DateTime(
@@ -196,10 +268,12 @@ if (
                         ) {
 
                             $error =
-                                "Login is not available yet. Your account starts at " .
+                                "Login is not available yet. Your account starts at "
+                                .
                                 $start->format(
                                     "d-m-Y H:i:s"
-                                ) .
+                                )
+                                .
                                 " IST.";
                         }
                     }
@@ -230,11 +304,48 @@ if (
                         ) {
 
                             $error =
-                                "Your login time has expired. Your account stopped at " .
+                                "Your login time has expired. Your account stopped at "
+                                .
                                 $stop->format(
                                     "d-m-Y H:i:s"
-                                ) .
+                                )
+                                .
                                 " IST.";
+                        }
+                    }
+
+
+                    /* =====================================
+                       APPLICATION CHECK
+                    ===================================== */
+
+                    if (
+                        $error === ""
+                    ) {
+
+                        $application =
+                            trim(
+                                $user["application"]
+                                ?? ""
+                            );
+
+
+                        /*
+                         * Application must be one of
+                         * the approved application files.
+                         */
+
+                        if (
+                            !in_array(
+                                $application,
+                                $allowed_applications,
+                                true
+                            )
+                        ) {
+
+                            $error =
+                                "Application is not authorized for this user.";
+
                         }
                     }
 
@@ -243,7 +354,10 @@ if (
                        LOGIN SUCCESS
                     ===================================== */
 
-                    if ($error === "") {
+                    if (
+                        $error === ""
+                    ) {
+
 
                         /*
                          * Regenerate session ID after
@@ -254,6 +368,10 @@ if (
                             true
                         );
 
+
+                        /* =================================
+                           STORE USER SESSION
+                        ================================= */
 
                         $_SESSION[
                             "app_user_id"
@@ -266,11 +384,6 @@ if (
                         ] =
                             $user["user_name"];
 
-
-                        /*
-                         * Store the permitted stop time
-                         * in the session for display/use.
-                         */
 
                         $_SESSION[
                             "app_start_time"
@@ -285,8 +398,18 @@ if (
 
 
                         /*
-                         * Update last_login.
+                         * Store assigned application.
                          */
+
+                        $_SESSION[
+                            "app_application"
+                        ] =
+                            $application;
+
+
+                        /* =================================
+                           UPDATE LAST LOGIN
+                        ================================= */
 
                         $update =
                             $conn->prepare("
@@ -303,26 +426,34 @@ if (
                                     "Y-m-d H:i:s"
                                 );
 
+
                             $update->bind_param(
                                 "ss",
                                 $login_time,
                                 $user["user_id"]
                             );
 
+
                             $update->execute();
+
 
                             $update->close();
                         }
 
 
+                        /* =================================
+                           REDIRECT TO ASSIGNED APPLICATION
+                        ================================= */
+
                         header(
-                            "Location: index.php"
+                            "Location: " . $application
                         );
 
                         exit;
                     }
                 }
             }
+
 
             $stmt->close();
         }
