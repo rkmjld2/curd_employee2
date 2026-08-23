@@ -111,14 +111,21 @@ if (!mysqli_set_charset($conn, "utf8mb4")) {
 
 
 // ------------------------------------------------------------
-// OPTIONAL APPLICATION SETTINGS
+// APPLICATION SETTINGS
 // ------------------------------------------------------------
 
-// Application name
 $APP_NAME = "CURD Employee 2";
 
-// Application timezone
 $APP_TIMEZONE = "Asia/Kolkata";
+
+
+// ------------------------------------------------------------
+// COMMERCIAL LICENSE SETTINGS
+// ------------------------------------------------------------
+
+// Customer/license identification number.
+// This value must exist in the remote license database.
+$LICENSE_USER_ID = "USER001";
 
 
 // ------------------------------------------------------------
