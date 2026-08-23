@@ -1,21 +1,18 @@
 <?php
 /*
 ============================================================
-CRUD-EMPLOYEE2
-LOGOUT
+CURD-EMPLOYEE2
+USER LOGOUT
 ============================================================
 */
 
 session_start();
 
 /*
- * Remove all session variables.
+ * Destroy the current login session.
  */
-$_SESSION = [];
+$_SESSION = array();
 
-/*
- * Destroy the session.
- */
 session_destroy();
 
 /*
@@ -23,4 +20,5 @@ session_destroy();
  */
 header("Location: login.php");
 exit;
+
 ?>
