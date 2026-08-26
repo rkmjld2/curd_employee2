@@ -1,15 +1,28 @@
 <?php
 /*
 ============================================================
-CRUD-EMPLOYEE2
+CURD-EMPLOYEE2
 CREATE USER
 ============================================================
 
-Database table:
+Database:
+    employeer
+
+Table:
     app_users
 
 Purpose:
     Create application users securely.
+
+IMPORTANT:
+    Application is entered manually by the administrator.
+
+Examples:
+    index.php
+    payroll.php
+    controller.php
+    /crud3/index.php
+    /abc/index.php
 
 Password:
     Stored using PHP password_hash()
@@ -25,8 +38,36 @@ session_start();
 
 require_once __DIR__ . "/db.php";
 
+
+/* =========================================================
+   ADMIN LOGIN PROTECTION
+========================================================= */
+
+if (
+    !isset($_SESSION["admin_logged_in"]) ||
+    $_SESSION["admin_logged_in"] !== true
+) {
+
+    header("Location: admin_login.php");
+    exit;
+}
+
+
+/* =========================================================
+   VARIABLES
+========================================================= */
+
 $message = "";
 $message_type = "";
+
+$user_id = "";
+$user_name = "";
+$password = "";
+$confirm_password = "";
+$application = "";
+$start_time = "";
+$stop_time = "";
+$active = 1;
 
 
 /* =========================================================
@@ -47,6 +88,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $confirm_password =
         $_POST["confirm_password"] ?? "";
 
+    $application =
+        trim($_POST["application"] ?? "");
+
     $active =
         isset($_POST["active"])
             ? 1
@@ -59,17 +103,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         trim($_POST["stop_time"] ?? "");
 
 
-    /* -----------------------------------------------------
-       VALIDATION
-    ----------------------------------------------------- */
+    /* =====================================================
+       BASIC VALIDATION
+    ===================================================== */
 
     if ($user_id === "") {
 
-        $message =
-            "User ID is required.";
-
-        $message_type =
-            "error";
+        $message = "User ID is required.";
+        $message_type = "error";
 
     }
     elseif (!preg_match(
@@ -80,26 +121,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $message =
             "User ID may contain only letters, numbers, underscore and hyphen.";
 
-        $message_type =
-            "error";
+        $message_type = "error";
 
     }
     elseif ($user_name === "") {
 
-        $message =
-            "User Name is required.";
-
-        $message_type =
-            "error";
+        $message = "User Name is required.";
+        $message_type = "error";
 
     }
     elseif ($password === "") {
 
-        $message =
-            "Password is required.";
-
-        $message_type =
-            "error";
+        $message = "Password is required.";
+        $message_type = "error";
 
     }
     elseif (strlen($password) < 6) {
@@ -107,8 +141,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $message =
             "Password must contain at least 6 characters.";
 
-        $message_type =
-            "error";
+        $message_type = "error";
 
     }
     elseif ($password !== $confirm_password) {
@@ -116,15 +149,139 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $message =
             "Passwords do not match.";
 
-        $message_type =
-            "error";
+        $message_type = "error";
 
+    }
+    elseif ($application === "") {
+
+        $message =
+            "Application is required.";
+
+        $message_type = "error";
     }
 
 
-    /* -----------------------------------------------------
+    /* =====================================================
+       APPLICATION VALIDATION
+    ===================================================== */
+
+    if ($message === "") {
+
+        /*
+         * Reject dangerous characters.
+         */
+
+        if (
+            preg_match(
+                '/[\r\n\t]/',
+                $application
+            )
+        ) {
+
+            $message =
+                "Application contains invalid characters.";
+
+            $message_type = "error";
+        }
+
+        /*
+         * Reject Windows backslash paths.
+         */
+
+        elseif (
+            strpos(
+                $application,
+                "\\"
+            ) !== false
+        ) {
+
+            $message =
+                "Please use / instead of \\ in Application.";
+
+            $message_type = "error";
+        }
+
+        /*
+         * Reject directory traversal.
+         */
+
+        elseif (
+            strpos(
+                $application,
+                ".."
+            ) !== false
+        ) {
+
+            $message =
+                "Invalid Application path.";
+
+            $message_type = "error";
+        }
+
+        /*
+         * Reject external URLs.
+         */
+
+        elseif (
+            preg_match(
+                '/^[a-zA-Z][a-zA-Z0-9+\-.]*:/',
+                $application
+            )
+        ) {
+
+            $message =
+                "External URLs are not allowed.";
+
+            $message_type = "error";
+        }
+
+        /*
+         * Reject protocol-relative URLs.
+         */
+
+        elseif (
+            substr(
+                $application,
+                0,
+                2
+            ) === "//"
+        ) {
+
+            $message =
+                "Invalid Application path.";
+
+            $message_type = "error";
+        }
+
+        /*
+         * If application is a local file,
+         * allow only PHP filename.
+         */
+
+        elseif (
+            substr(
+                $application,
+                0,
+                1
+            ) !== "/"
+            &&
+            !preg_match(
+                '/^[A-Za-z0-9_-]+\.php$/i',
+                $application
+            )
+        ) {
+
+            $message =
+                "Invalid application. Example: controller.php";
+
+            $message_type = "error";
+        }
+    }
+
+
+    /* =====================================================
        CHECK USER ID
-    ----------------------------------------------------- */
+    ===================================================== */
 
     if ($message === "") {
 
@@ -138,10 +295,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         if (!$stmt) {
 
             $message =
-                "Could not prepare user check.";
+                "Could not prepare user check: "
+                . $conn->error;
 
-            $message_type =
-                "error";
+            $message_type = "error";
 
         }
         else {
@@ -156,13 +313,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $result =
                 $stmt->get_result();
 
-            if ($result->num_rows > 0) {
+            if (
+                $result &&
+                $result->num_rows > 0
+            ) {
 
                 $message =
                     "This User ID already exists.";
 
-                $message_type =
-                    "error";
+                $message_type = "error";
             }
 
             $stmt->close();
@@ -170,15 +329,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
 
-    /* -----------------------------------------------------
+    /* =====================================================
        CHECK START / STOP TIME
-    ----------------------------------------------------- */
+    ===================================================== */
+
+    $start_datetime = null;
+    $stop_datetime = null;
+
 
     if ($message === "") {
-
-        $start_datetime = null;
-        $stop_datetime = null;
-
 
         if ($start_time !== "") {
 
@@ -189,7 +348,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $start_time
                 );
 
-            if (strlen($start_datetime) === 16) {
+            if (
+                strlen($start_datetime) === 16
+            ) {
+
                 $start_datetime .= ":00";
             }
         }
@@ -204,13 +366,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $stop_time
                 );
 
-            if (strlen($stop_datetime) === 16) {
+            if (
+                strlen($stop_datetime) === 16
+            ) {
+
                 $stop_datetime .= ":00";
             }
         }
 
 
-        /* Start must be before Stop */
+        /*
+         * Start must be before Stop.
+         */
 
         if (
             $start_datetime !== null &&
@@ -218,10 +385,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         ) {
 
             $start_timestamp =
-                strtotime($start_datetime);
+                strtotime(
+                    $start_datetime
+                );
 
             $stop_timestamp =
-                strtotime($stop_datetime);
+                strtotime(
+                    $stop_datetime
+                );
+
 
             if (
                 $start_timestamp !== false &&
@@ -232,21 +404,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 $message =
                     "Stop Time must be later than Start Time.";
 
-                $message_type =
-                    "error";
+                $message_type = "error";
             }
         }
     }
 
 
-    /* -----------------------------------------------------
+    /* =====================================================
        INSERT USER
-    ----------------------------------------------------- */
+    ===================================================== */
 
     if ($message === "") {
 
         /*
-         * Generate secure password hash.
+         * Secure password hash.
          */
 
         $password_hash =
@@ -264,32 +435,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 password_hash,
                 active,
                 start_time,
-                stop_time
+                stop_time,
+                application
             )
             VALUES
-            (?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?)
         ");
 
 
         if (!$stmt) {
 
             $message =
-                "Could not prepare user creation.";
+                "Could not prepare user creation: "
+                . $conn->error;
 
-            $message_type =
-                "error";
+            $message_type = "error";
 
         }
         else {
 
             $stmt->bind_param(
-                "sssiss",
+                "sssisss",
                 $user_id,
                 $user_name,
                 $password_hash,
                 $active,
                 $start_datetime,
-                $stop_datetime
+                $stop_datetime,
+                $application
             );
 
 
@@ -303,13 +476,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 
                 /*
-                 * Clear form fields after successful creation.
+                 * Clear form after successful creation.
                  */
 
                 $user_id = "";
                 $user_name = "";
                 $password = "";
                 $confirm_password = "";
+                $application = "";
                 $start_time = "";
                 $stop_time = "";
                 $active = 1;
@@ -318,8 +492,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             else {
 
                 $message =
-                    "User creation failed: " .
-                    $stmt->error;
+                    "User creation failed: "
+                    . $stmt->error;
 
                 $message_type =
                     "error";
@@ -332,6 +506,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 }
 
 ?>
+
+
 <!DOCTYPE html>
 
 <html lang="en">
@@ -340,10 +516,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-<title>Create User - CRUD Employee 2</title>
+<title>
+Create User - CURD-EMPLOYEE2
+</title>
 
 
 <style>
@@ -370,9 +550,9 @@ body {
 
 .container {
 
-    max-width: 500px;
+    max-width: 520px;
 
-    margin: 50px auto;
+    margin: 40px auto;
 
     background: white;
 
@@ -448,6 +628,18 @@ input:focus {
 }
 
 
+.application-note {
+
+    margin-top: 6px;
+
+    color: #666;
+
+    font-size: 13px;
+
+    line-height: 1.5;
+}
+
+
 .checkbox-group {
 
     display: flex;
@@ -487,6 +679,35 @@ input:focus {
 
 
 .create-button:hover {
+
+    opacity: 0.85;
+}
+
+
+.admin-button {
+
+    display: block;
+
+    width: 100%;
+
+    padding: 11px;
+
+    margin-top: 10px;
+
+    border-radius: 6px;
+
+    background: #6c757d;
+
+    color: white;
+
+    text-align: center;
+
+    text-decoration: none;
+
+}
+
+
+.admin-button:hover {
 
     opacity: 0.85;
 }
@@ -539,26 +760,6 @@ input:focus {
     font-size: 14px;
 }
 
-
-.back {
-
-    display: block;
-
-    text-align: center;
-
-    margin-top: 20px;
-
-    color: #007bff;
-
-    text-decoration: none;
-}
-
-
-.back:hover {
-
-    text-decoration: underline;
-}
-
 </style>
 
 </head>
@@ -576,21 +777,35 @@ Create User
 
 
 <div class="subtitle">
-CRUD Employee 2
+CURD-EMPLOYEE2 Administrator
 </div>
 
 
 <div class="note">
 
-<strong>Important:</strong><br>
+<strong>Application:</strong><br>
 
-The password will be automatically converted
-to a secure password hash before it is stored
-in the database.
+Enter the PHP application that this user
+should open after successful login.
 
 <br><br>
 
-You do not need to enter a password hash manually.
+Examples:
+
+<br>
+<code>index.php</code>
+
+<br>
+<code>payroll.php</code>
+
+<br>
+<code>controller.php</code>
+
+<br>
+<code>/crud3/index.php</code>
+
+<br>
+<code>/abc/index.php</code>
 
 </div>
 
@@ -604,9 +819,12 @@ if ($message !== "") {
 <div
     class="message
     <?php
-        echo $message_type === "success"
-            ? "success"
-            : "error";
+
+    echo
+        $message_type === "success"
+        ? "success"
+        : "error";
+
     ?>"
 >
 
@@ -635,6 +853,8 @@ echo htmlspecialchars(
 >
 
 
+<!-- USER ID -->
+
 <div class="form-group">
 
 <label for="user_id">
@@ -647,18 +867,22 @@ User ID
     name="user_id"
     maxlength="50"
     required
-    placeholder="Example: ravi"
+    placeholder="Example: ravi4"
     value="<?php
+
         echo htmlspecialchars(
-            $user_id ?? "",
+            $user_id,
             ENT_QUOTES,
             "UTF-8"
         );
+
     ?>"
 >
 
 </div>
 
+
+<!-- USER NAME -->
 
 <div class="form-group">
 
@@ -672,18 +896,22 @@ User Name
     name="user_name"
     maxlength="100"
     required
-    placeholder="Example: Ravi"
+    placeholder="Example: Ravi4"
     value="<?php
+
         echo htmlspecialchars(
-            $user_name ?? "",
+            $user_name,
             ENT_QUOTES,
             "UTF-8"
         );
+
     ?>"
 >
 
 </div>
 
+
+<!-- PASSWORD -->
 
 <div class="form-group">
 
@@ -702,6 +930,8 @@ Password
 </div>
 
 
+<!-- CONFIRM PASSWORD -->
+
 <div class="form-group">
 
 <label for="confirm_password">
@@ -719,6 +949,45 @@ Confirm Password
 </div>
 
 
+<!-- APPLICATION -->
+
+<div class="form-group">
+
+<label for="application">
+Application
+</label>
+
+<input
+    type="text"
+    id="application"
+    name="application"
+    maxlength="255"
+    required
+    placeholder="Example: controller.php"
+    value="<?php
+
+        echo htmlspecialchars(
+            $application,
+            ENT_QUOTES,
+            "UTF-8"
+        );
+
+    ?>"
+>
+
+<div class="application-note">
+
+Enter the value exactly as it should be
+stored in the <strong>application</strong>
+column.
+
+</div>
+
+</div>
+
+
+<!-- ACTIVE -->
+
 <div class="checkbox-group">
 
 <input
@@ -726,10 +995,14 @@ Confirm Password
     id="active"
     name="active"
     value="1"
+
     <?php
-        echo (!isset($active) || $active == 1)
-            ? "checked"
-            : "";
+
+    echo
+        $active == 1
+        ? "checked"
+        : "";
+
     ?>
 >
 
@@ -743,6 +1016,8 @@ Active User
 </div>
 
 
+<!-- START TIME -->
+
 <div class="form-group">
 
 <label for="start_time">
@@ -754,16 +1029,20 @@ Start Time (Optional)
     id="start_time"
     name="start_time"
     value="<?php
+
         echo htmlspecialchars(
-            $start_time ?? "",
+            $start_time,
             ENT_QUOTES,
             "UTF-8"
         );
+
     ?>"
 >
 
 </div>
 
+
+<!-- STOP TIME -->
 
 <div class="form-group">
 
@@ -776,16 +1055,20 @@ Stop Time (Optional)
     id="stop_time"
     name="stop_time"
     value="<?php
+
         echo htmlspecialchars(
-            $stop_time ?? "",
+            $stop_time,
             ENT_QUOTES,
             "UTF-8"
         );
+
     ?>"
 >
 
 </div>
 
+
+<!-- CREATE -->
 
 <button
     type="submit"
@@ -799,10 +1082,10 @@ CREATE USER
 
 
 <a
-    href="login.php"
-    class="back"
+    href="admin.php"
+    class="admin-button"
 >
-Go to Login
+Back to User Management
 </a>
 
 
@@ -812,6 +1095,7 @@ Go to Login
 </body>
 
 </html>
+
 
 <?php
 
