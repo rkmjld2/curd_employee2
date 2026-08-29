@@ -9,30 +9,16 @@ Purpose:
     Administrator-only login for User Management.
 
 Authentication:
-    Administrator is stored in app_users.
+    ADMIN_PASSWORD from environment variable.
 
 IMPORTANT:
-    The administrator account may log in even when
-    active = 0.
+    This is separate from normal user login.
 
-    This is intentional so that an inactive administrator
-    can enter admin.php and activate the administrator
-    account again.
-
-Normal users:
+Normal user:
     login.php
 
 Administrator:
     admin_login.php
-
-Database:
-    employeer
-
-Table:
-    app_users
-
-Administrator User ID:
-    admin
 
 Timezone:
     Asia/Kolkata
@@ -42,21 +28,15 @@ Timezone:
 
 date_default_timezone_set("Asia/Kolkata");
 
-
-/* =========================================================
-   SESSION
-========================================================= */
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+session_start();
 
 
 /* =========================================================
-   DATABASE
+   ADMIN PASSWORD
 ========================================================= */
 
-require_once __DIR__ . "/db.php";
+$admin_password =
+    getenv("ADMIN_PASSWORD") ?: "";
 
 
 /* =========================================================
@@ -95,165 +75,57 @@ if (
 
 
     /* =====================================================
-       BASIC VALIDATION
+       CHECK ADMIN PASSWORD
     ===================================================== */
 
-    if ($password === "") {
+    if (
+        $admin_password !== "" &&
+        hash_equals(
+            $admin_password,
+            $password
+        )
+    ) {
 
-        $login_error =
-            "Please enter Administrator Password.";
 
-    } else {
+        /*
+         * Regenerate session ID after
+         * successful authentication.
+         */
+
+        session_regenerate_id(true);
 
 
         /* =================================================
-           FIND ADMINISTRATOR
+           ADMIN SESSION
         ================================================= */
 
-        $stmt = $conn->prepare("
-            SELECT
-                id,
-                user_id,
-                user_name,
-                password_hash,
-                active
-            FROM app_users
-            WHERE user_id = 'admin'
-            LIMIT 1
-        ");
+        $_SESSION["admin_logged_in"] = true;
 
 
-        if (!$stmt) {
+        /*
+         * Optional identification of
+         * administrator session.
+         */
 
-            $login_error =
-                "Administrator login preparation failed: "
-                . $conn->error;
-
-        } else {
-
-            $stmt->execute();
-
-            $result =
-                $stmt->get_result();
+        $_SESSION["admin_name"] =
+            "Administrator";
 
 
-            /* =============================================
-               ADMIN NOT FOUND
-            ============================================= */
+        /* =================================================
+           GO TO ADMIN PANEL
+        ================================================= */
 
-            if (
-                !$result ||
-                $result->num_rows === 0
-            ) {
+        header(
+            "Location: admin.php"
+        );
 
-                $login_error =
-                    "Administrator account was not found.";
+        exit;
 
-            } else {
+    }
+    else {
 
-                $admin =
-                    $result->fetch_assoc();
-
-
-                /* =========================================
-                   PASSWORD CHECK
-                ========================================= */
-
-                if (
-                    !password_verify(
-                        $password,
-                        $admin["password_hash"]
-                    )
-                ) {
-
-                    $login_error =
-                        "Invalid administrator password.";
-
-                } else {
-
-
-                    /*
-                     * IMPORTANT:
-                     *
-                     * We deliberately DO NOT check:
-                     *
-                     *     active == 1
-                     *
-                     * here.
-                     *
-                     * This allows an inactive administrator
-                     * to enter admin.php and activate the
-                     * administrator account.
-                     */
-
-
-                    /* =====================================
-                       REGENERATE SESSION
-                    ===================================== */
-
-                    session_regenerate_id(true);
-
-
-                    /* =====================================
-                       ADMIN SESSION
-                    ===================================== */
-
-                    $_SESSION["admin_logged_in"] =
-                        true;
-
-                    $_SESSION["admin_name"] =
-                        $admin["user_name"];
-
-                    $_SESSION["admin_user_id"] =
-                        $admin["user_id"];
-
-                    $_SESSION["admin_db_id"] =
-                        $admin["id"];
-
-
-                    /* =====================================
-                       UPDATE LAST LOGIN
-                    ===================================== */
-
-                    $update =
-                        $conn->prepare("
-                            UPDATE app_users
-                            SET last_login = ?
-                            WHERE user_id = 'admin'
-                        ");
-
-
-                    if ($update) {
-
-                        $login_time =
-                            date("Y-m-d H:i:s");
-
-                        $update->bind_param(
-                            "s",
-                            $login_time
-                        );
-
-                        $update->execute();
-
-                        $update->close();
-                    }
-
-
-                    /* =====================================
-                       GO TO ADMIN PANEL
-                    ===================================== */
-
-                    header(
-                        "Location: admin.php"
-                    );
-
-                    exit;
-                }
-            }
-
-
-            $stmt->close();
-        }
+        $login_error =
+            "Invalid administrator password.";
     }
 }
 
@@ -266,14 +138,10 @@ if (
 
 <meta charset="UTF-8">
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
-<title>
-CURD-EMPLOYEE2 - Administrator Login
-</title>
+<title>CURD-EMPLOYEE2 - Administrator Login</title>
 
 
 <style>
@@ -487,9 +355,3 @@ User Management Administration
 </body>
 
 </html>
-
-<?php
-
-mysqli_close($conn);
-
-?>
